@@ -63,8 +63,7 @@
     "vitest": "^5.0.0"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "author": "local-executor contributors"
 }
