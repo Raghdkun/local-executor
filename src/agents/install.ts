@@ -1,0 +1,209 @@
+import { readdir, readFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import {
+  copyDir,
+  ensureDir,
+  exists,
+  isDirectory,
+  readJsonOr,
+  readTextOr,
+  removePath,
+  toPosix,
+  writeJson,
+  writeText,
+} from "../util/fs.js";
+import { removeBlock, upsertBlock } from "../util/markers.js";
+import type { InstallRecord } from "../util/state.js";
+import { configPathFor, type InstallTarget } from "./paths.js";
+
+export interface TemplateVars {
+  LEX_ROOT: string;
+  LEX_CORE: string;
+  LEX_RUNTIME: string;
+  LEX_CONFIG: string;
+  LEX_MODEL: string;
+  LEX_VERSION: string;
+}
+
+export function templateVars(root: string, model: string, version: string): TemplateVars {
+  const r = toPosix(root);
+  return {
+    LEX_ROOT: r,
+    LEX_CORE: `${r}/core`,
+    LEX_RUNTIME: `${r}/runtime`,
+    LEX_CONFIG: `${r}/runtime/config.json`,
+    LEX_MODEL: model,
+    LEX_VERSION: version,
+  };
+}
+
+/** Replace `{{KEY}}` placeholders. Unknown keys are left untouched so they are visible. */
+export function renderTemplate(text: string, vars: TemplateVars): string {
+  return text.replace(/\{\{(LEX_[A-Z_]+)\}\}/g, (whole, key: string) =>
+    key in vars ? vars[key as keyof TemplateVars] : whole,
+  );
+}
+
+export interface RuntimeConfig {
+  ollama_url: string;
+  model: string;
+  fallback_model?: string;
+  num_ctx: number;
+  temperature: number;
+  keep_alive: string;
+  timeout_seconds: number;
+  think: boolean;
+}
+
+export const defaultRuntimeConfig: RuntimeConfig = {
+  ollama_url: "http://localhost:11434",
+  model: "qwen3.5:9b",
+  fallback_model: "qwen3.5:4b",
+  num_ctx: 16384,
+  temperature: 0.1,
+  keep_alive: "30m",
+  timeout_seconds: 600,
+  think: false,
+};
+
+export interface InstallInput {
+  target: InstallTarget;
+  /** Absolute path to the package's `skill/` directory. */
+  skillSource: string;
+  model: string;
+  ollamaUrl: string;
+  version: string;
+  /** Pre-rendered `core/models.md` for this machine. */
+  modelsDoc: string;
+}
+
+export interface InstallOutcome {
+  record: InstallRecord;
+  /** Human-readable list of what happened, for the summary. */
+  actions: string[];
+}
+
+async function copyCore(src: string, dest: string, vars: TemplateVars): Promise<void> {
+  await ensureDir(dest);
+  for (const name of await readdir(src)) {
+    const text = await readFile(join(src, name), "utf8");
+    await writeText(join(dest, name), name.endsWith(".md") ? renderTemplate(text, vars) : text);
+  }
+}
+
+/**
+ * Install one target. Idempotent: re-running overwrites our own files, keeps
+ * user edits to config.json fields other than model/ollama_url, and replaces
+ * (never duplicates) marker blocks in shared files.
+ */
+export async function installTarget(input: InstallInput): Promise<InstallOutcome> {
+  const { target, skillSource, model, version } = input;
+  const actions: string[] = [];
+  const vars = templateVars(target.root, model, version);
+  const ownsRoot = target.scope === "user" || target.agent === "claude";
+  const owned: string[] = [];
+  const marked: string[] = [];
+
+  if (ownsRoot) {
+    const existed = await exists(target.root);
+    await ensureDir(target.root);
+    await copyCore(join(skillSource, "core"), join(target.root, "core"), vars);
+    await writeText(join(target.root, "core", "models.md"), input.modelsDoc);
+    // Runtime scripts are copied verbatim; config.json is merged below.
+    const runtimeDest = join(target.root, "runtime");
+    const configPath = configPathFor(target.root);
+    const existing = await readJsonOr<Partial<RuntimeConfig>>(configPath, {});
+    await ensureDir(runtimeDest);
+    await copyDir(join(skillSource, "runtime"), runtimeDest);
+    const shipped = await readJsonOr<Partial<RuntimeConfig>>(
+      join(skillSource, "runtime", "config.json"),
+      {},
+    );
+    const merged: RuntimeConfig = {
+      ...defaultRuntimeConfig,
+      ...shipped,
+      ...existing,
+      model,
+      ollama_url: input.ollamaUrl,
+    };
+    await writeJson(configPath, merged);
+    owned.push(target.root);
+    actions.push(`${existed ? "Updated" : "Created"} ${target.root}`);
+  }
+
+  for (const a of target.adapters) {
+    const text = await readFile(join(skillSource, "adapters", a.source), "utf8");
+    await writeText(a.dest, renderTemplate(text, vars));
+    if (!ownsRoot || !a.dest.startsWith(target.root)) owned.push(a.dest);
+    actions.push(`Wrote ${a.dest}`);
+  }
+
+  for (const o of target.optional) {
+    if (!(await isDirectory(o.ifDirExists))) continue;
+    const text = await readFile(join(skillSource, "adapters", o.adapter.source), "utf8");
+    await writeText(o.adapter.dest, renderTemplate(text, vars));
+    owned.push(
+      dirname(o.adapter.dest) === o.ifDirExists ? o.adapter.dest : dirname(o.adapter.dest),
+    );
+    actions.push(`Wrote ${o.adapter.dest}`);
+  }
+
+  for (const m of target.marked) {
+    const body = renderTemplate(
+      await readFile(join(skillSource, "adapters", m.source), "utf8"),
+      vars,
+    );
+    const current = await readTextOr(m.dest, "");
+    const next = upsertBlock(current, body);
+    if (next !== current) await writeText(m.dest, next);
+    marked.push(m.dest);
+    actions.push(
+      `${current.includes("<!-- lex:start -->") ? "Refreshed" : "Appended"} lex block in ${m.dest}`,
+    );
+  }
+
+  const record: InstallRecord = {
+    agent: target.agent,
+    scope: target.scope,
+    root: target.root,
+    configPath: configPathFor(target.root),
+    owned,
+    marked,
+    installedAt: new Date().toISOString(),
+    version,
+  };
+  return { record, actions };
+}
+
+/** Reverse an install record. Never deletes files we merely appended to. */
+export async function uninstallRecord(rec: InstallRecord): Promise<string[]> {
+  const actions: string[] = [];
+  for (const p of rec.owned) {
+    if (await exists(p)) {
+      await removePath(p);
+      actions.push(`Removed ${p}`);
+    }
+  }
+  for (const f of rec.marked) {
+    const current = await readTextOr(f, "");
+    if (!current) continue;
+    const next = removeBlock(current);
+    if (next === current) continue;
+    if (next.trim().length === 0 && basename(f) === "AGENTS.md") {
+      // Only our block was in it; leave an empty file rather than guessing whether the user wants it.
+      await writeText(f, "");
+    } else {
+      await writeText(f, next);
+    }
+    actions.push(`Removed lex block from ${f}`);
+  }
+  return actions;
+}
+
+/** Update the model in an installed config.json. Returns false if the file is missing. */
+export async function updateConfigModel(configPath: string, model: string): Promise<boolean> {
+  if (!(await exists(configPath))) return false;
+  const cfg = await readJsonOr<Partial<RuntimeConfig>>(configPath, {});
+  await writeJson(configPath, { ...defaultRuntimeConfig, ...cfg, model });
+  return true;
+}

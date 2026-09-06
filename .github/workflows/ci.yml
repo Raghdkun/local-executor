@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # The built CLI must start and answer without a network or an Ollama server.
+      - run: node dist/cli.js --version
+      - run: node dist/cli.js models --json
+      - run: node dist/cli.js doctor --json || true
+      # Full non-interactive install into a throwaway HOME; nothing is pulled or contacted.
+      - name: Isolated init/uninstall (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME/.codex"
+          node dist/cli.js init --json --skip-ollama --skip-pull --skip-verify --agents claude,codex,cursor,windsurf --project > "$RUNNER_TEMP/init.json"
+          node -e "const d=require(process.env.RUNNER_TEMP+'/init.json'); if(!d.installs.length) process.exit(1)"
+          node dist/cli.js doctor --json || true
+          node dist/cli.js uninstall --yes
+      - name: Isolated init/uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:USERPROFILE = "$env:RUNNER_TEMP\home"; New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex" | Out-Null
+          node dist/cli.js init --json --skip-ollama --skip-pull --skip-verify --agents claude,codex --no-project > "$env:RUNNER_TEMP\init.json"
+          node dist/cli.js uninstall --yes

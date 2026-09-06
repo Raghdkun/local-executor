@@ -1,0 +1,10 @@
+{
+  "ollama_url": "http://localhost:11434",
+  "model": "qwen3.5:9b",
+  "fallback_model": "qwen3.5:4b",
+  "num_ctx": 16384,
+  "temperature": 0.1,
+  "keep_alive": "30m",
+  "timeout_seconds": 600,
+  "think": false
+}
