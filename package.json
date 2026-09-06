@@ -1,7 +1,7 @@
 {
   "name": "local-executor",
   "version": "0.1.0",
-  "description": "Set up a planner \u2192 local executor \u2192 auditor AI coding pipeline: installs Ollama, picks a right-sized open-weight model for your hardware, and installs the skill into Claude Code, Codex CLI, Cursor, and Windsurf.",
+  "description": "Set up a planner → local executor → auditor AI coding pipeline: installs Ollama, picks a right-sized open-weight model for your hardware, and installs the skill into Claude Code, Codex CLI, Cursor, and Windsurf.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -51,7 +51,7 @@
   "dependencies": {
     "@clack/prompts": "^1.7.0",
     "commander": "^15.0.0",
-    "execa": "^10.0.1",
+    "execa": "^9.6.1",
     "picocolors": "^1.1.1",
     "systeminformation": "^5.33.8"
   },

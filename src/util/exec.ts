@@ -88,7 +88,8 @@ export function spawnDetached(
     reject: false,
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
   };
-  execa(file, args, options).nodeChildProcess.unref();
+  // In execa 9 the returned promise also exposes the ChildProcess methods.
+  execa(file, args, options).unref();
 }
 
 /** Open a URL in the default browser. Returns false if no opener is available. */
