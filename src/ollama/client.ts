@@ -24,6 +24,44 @@ export interface WarmupResult {
   reply: string;
 }
 
+/** Stored in runtime/config.json so the runner can estimate packet time. */
+export interface Benchmark {
+  model: string;
+  prompt_tps: number | null;
+  gen_tps: number | null;
+  prompt_tokens: number;
+  load_ms: number;
+  measured_at: string;
+}
+
+/** A typical packet: ~4k tokens in, ~2k tokens (one full file) out. */
+export const TYPICAL_PACKET = { promptTokens: 4000, outputTokens: 2000 };
+
+export function estimateSecondsPerPacket(b: Benchmark | null | undefined): number | null {
+  if (!b?.prompt_tps || !b?.gen_tps) return null;
+  return Math.round(
+    TYPICAL_PACKET.promptTokens / b.prompt_tps + TYPICAL_PACKET.outputTokens / b.gen_tps,
+  );
+}
+
+/** ~2k tokens of code-like text with a nonce so Ollama cannot reuse a cached prefix. */
+export function benchmarkPrompt(nonce: number = Date.now()): string {
+  const unit = `// nonce ${nonce}
+export function process${nonce % 97}(items: readonly Item[], opts: Options = {}): Result {
+  const out: Result = { kept: [], dropped: [], total: 0 };
+  for (const item of items) {
+    if (item.score < (opts.threshold ?? 0.5)) { out.dropped.push(item.id); continue; }
+    out.kept.push({ ...item, tags: [...new Set(item.tags)].sort() });
+    out.total += item.score;
+  }
+  return out;
+}
+`;
+  let text = "";
+  while (text.length < 7200) text += unit;
+  return `${text}\nRead the code above. Reply with the single word OK.`;
+}
+
 export interface LocalModel {
   name: string;
   sizeBytes: number;
@@ -128,6 +166,49 @@ export class OllamaClient {
       loadDurationMs: Math.round((data.load_duration ?? 0) / 1e6),
       totalDurationMs: Math.round((data.total_duration ?? 0) / 1e6),
       reply: data.response ?? "",
+    };
+  }
+
+  /**
+   * Measure prompt-processing and generation speed with a ~2k-token prompt.
+   * Loads the model as a side effect (keep_alive keeps it resident).
+   */
+  async benchmark(
+    tag: string,
+    opts: { numCtx?: number; keepAlive?: string; timeoutMs?: number } = {},
+  ): Promise<Benchmark> {
+    const res = await this.fetchImpl(`${this.baseUrl}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: tag,
+        prompt: benchmarkPrompt(),
+        stream: false,
+        keep_alive: opts.keepAlive ?? "30m",
+        options: { num_predict: 96, temperature: 0, num_ctx: opts.numCtx ?? 16384 },
+      }),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 300_000),
+    });
+    if (!res.ok)
+      throw new Error(`Ollama /api/generate failed: HTTP ${res.status} ${await safeText(res)}`);
+    const d = (await res.json()) as {
+      prompt_eval_count?: number;
+      prompt_eval_duration?: number;
+      eval_count?: number;
+      eval_duration?: number;
+      load_duration?: number;
+    };
+    const pt = d.prompt_eval_count ?? 0;
+    const pd = (d.prompt_eval_duration ?? 0) / 1e9;
+    const gt = d.eval_count ?? 0;
+    const gd = (d.eval_duration ?? 0) / 1e9;
+    return {
+      model: tag,
+      prompt_tps: pd > 0 ? Math.round(pt / pd) : null,
+      gen_tps: gd > 0 ? Math.round((gt / gd) * 10) / 10 : null,
+      prompt_tokens: pt,
+      load_ms: Math.round((d.load_duration ?? 0) / 1e6),
+      measured_at: new Date().toISOString(),
     };
   }
 

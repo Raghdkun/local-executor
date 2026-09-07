@@ -1,5 +1,6 @@
 import { findModel } from "../models/catalog.js";
 import type { Recommendation } from "../models/recommend.js";
+import { estimateSecondsPerPacket } from "../ollama/client.js";
 import { formatPullLine, PullTracker } from "../ollama/progress.js";
 import * as log from "../util/log.js";
 import type { RunContext } from "./context.js";
@@ -66,20 +67,47 @@ export async function pullModel(ctx: RunContext, tag: string): Promise<boolean> 
   }
 }
 
+export function formatMinutes(seconds: number): string {
+  return seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
+}
+
+/**
+ * Load the model and measure prompt and generation speed with a ~2k-token
+ * prompt. The result is stored in every config.json so the runner and
+ * check_local can say how long a packet will take.
+ */
 export async function warmupModel(ctx: RunContext, tag: string): Promise<void> {
   const sp = log.spinner();
-  sp.start(`Loading ${tag} and measuring speed (first load can take 10–30 s)…`);
+  sp.start(`Loading ${tag} and measuring speed with a 2k-token prompt (30–90 s on first load)…`);
   try {
-    const w = await ctx.client.warmup(tag);
-    ctx.warmup = w;
-    const speed = w.tokensPerSec !== null ? `${w.tokensPerSec} tok/s` : "speed unknown";
-    sp.stop(
-      `${tag} ready: ${log.pc.bold(speed)} (load ${Math.round(w.loadDurationMs / 100) / 10} s, ${w.evalCount} tokens generated)`,
-    );
+    const b = await ctx.client.benchmark(tag);
+    ctx.benchmark = b;
+    ctx.warmup = {
+      tokensPerSec: b.gen_tps,
+      evalCount: 0,
+      evalDurationMs: 0,
+      loadDurationMs: b.load_ms,
+      totalDurationMs: 0,
+      reply: "",
+    };
+    const eta = estimateSecondsPerPacket(b);
+    const speed =
+      b.gen_tps !== null
+        ? `${b.gen_tps} tok/s generation, ${b.prompt_tps ?? "?"} tok/s prompt`
+        : "speed unknown";
+    sp.stop(`${tag} ready: ${log.pc.bold(speed)} (load ${Math.round(b.load_ms / 100) / 10} s)`);
+    if (eta !== null) {
+      log.info(
+        `Expect about ${log.pc.bold(formatMinutes(eta))} per typical packet (4k tokens in, a 2k-token file out). Agents run the executor in the background, one packet at a time.`,
+      );
+    }
   } catch (err) {
     ctx.warmup = null;
-    sp.error(`Warm-up failed: ${(err as Error).message}`);
-    ctx.warnings.push(`Warm-up request failed for ${tag}; the model may not have loaded.`);
+    ctx.benchmark = null;
+    sp.error(`Benchmark failed: ${(err as Error).message}`);
+    ctx.warnings.push(
+      `Speed measurement failed for ${tag}; run \`check_local.mjs --bench\` later. The model may not have loaded (memory pressure?).`,
+    );
   }
 }
 

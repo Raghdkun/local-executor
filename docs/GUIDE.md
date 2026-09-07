@@ -44,9 +44,18 @@ After pulling a model, `lex` sends it one short prompt and prints tokens/sec. A 
 
 The first request after Ollama loads a model is slow (10–30 s) because the file is being read into memory. `lex` sets `keep_alive` to 30 minutes so the model stays loaded between packets. If you see the slow first request on every call, something is unloading the model: another tool using Ollama, or memory pressure.
 
+## How long a packet takes
+
+Two numbers matter, and `lex` measures both at install (also `check_local.mjs --bench`):
+
+- **Prompt tokens/sec**: how fast the model reads the packet. Hundreds per second on a GPU or Apple Silicon.
+- **Generation tokens/sec**: how fast it writes the reply. 10–20 for a 9B model on a laptop.
+
+A typical packet is about 4,000 tokens in and a 2,000-token file out, so at 400 prompt tok/s and 16 gen tok/s that is roughly 10 s of reading and 2 minutes of writing. Larger files scale linearly. The runner prints its estimate before sending, so the planner knows to run it in the background and to write the next packet's tests while it waits. Ollama runs one request at a time; a second packet started early just queues invisibly, which is why the runner refuses (or queues with `--wait`) rather than letting two overlap.
+
 ## What "context size" (`num_ctx`) is
 
-The context is how much text the model can hold at once: the system prompt, your packet, and its reply. `lex` sets it to 16,384 tokens, enough for a packet with a few hundred lines of code plus tests. Context costs memory (the "KV cache" grows with it), so if a model that should fit is swapping, halve `num_ctx` to 8192 in `config.json` before choosing a smaller model.
+The context is how much text the model can hold at once: the system prompt, your packet, and its reply, which for this pipeline is a complete copy of every file being changed. `lex` sets it to 16,384 tokens, or 32,768 when the machine has at least 12 GB of headroom above the model file. Context costs memory (the "KV cache" grows with it), so if a model that should fit is swapping, halve `num_ctx` in `config.json` before choosing a smaller model. The runner estimates each packet against the limit and refuses ones that cannot fit; a `--dry-run` shows the numbers.
 
 ## How to know the setup is healthy
 

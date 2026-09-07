@@ -55,7 +55,8 @@ export async function runSwitch(
   const missing: string[] = [];
   for (const rec of manifest.installs) {
     if (!rec.owned.includes(rec.root)) continue;
-    if (await updateConfigModel(rec.configPath, tag)) updated.push(rec.configPath);
+    if (await updateConfigModel(rec.configPath, tag, ctx.benchmark ?? null))
+      updated.push(rec.configPath);
     else missing.push(rec.configPath);
   }
   manifest.model = tag;

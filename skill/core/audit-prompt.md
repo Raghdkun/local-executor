@@ -25,7 +25,7 @@ Review the diff against the packet. Check, in this order:
 2. Scope — did it touch anything outside "Files you may change"? Did it violate any "Do NOT"?
 3. Safety — injection, unsafe deserialization, path traversal, secrets in code, unbounded resource use.
 4. Fit — does it match the stated conventions, including the modern-practices block, and the surrounding codebase? Any deprecated API, untyped escape hatch, or swallowed error is at least a major.
-5. Tests — are the packet's tests themselves adequate? If a critical case is missing, say which one.
+5. Tests — are the packet's tests themselves adequate? If a critical case is missing, say which one. Watch for code that satisfies one test by making another impossible (a guard that short-circuits a path the second test needs).
 
 Respond with exactly this format:
 

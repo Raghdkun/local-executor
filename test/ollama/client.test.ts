@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ndjson, OllamaClient } from "../../src/ollama/client.js";
+import { estimateSecondsPerPacket, ndjson, OllamaClient } from "../../src/ollama/client.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -134,5 +134,32 @@ describe("ndjson", () => {
     const out: unknown[] = [];
     for await (const x of ndjson(body)) out.push(x);
     expect(out).toEqual([{ a: 1 }, { b: 2 }, { c: 3 }]);
+  });
+});
+
+describe("benchmark", () => {
+  it("computes prompt and generation tok/s from the generate response", async () => {
+    let sentPrompt = "";
+    const c = new OllamaClient("http://x", async (_url: string, init?: RequestInit) => {
+      sentPrompt = (JSON.parse(String(init?.body)) as { prompt: string }).prompt;
+      return jsonResponse({
+        prompt_eval_count: 2000,
+        prompt_eval_duration: 5_000_000_000,
+        eval_count: 80,
+        eval_duration: 5_000_000_000,
+        load_duration: 1_500_000_000,
+      });
+    });
+    const b = await c.benchmark("qwen3.5:9b");
+    expect(b).toMatchObject({
+      model: "qwen3.5:9b",
+      prompt_tps: 400,
+      gen_tps: 16,
+      prompt_tokens: 2000,
+      load_ms: 1500,
+    });
+    expect(sentPrompt.length).toBeGreaterThan(7000);
+    expect(estimateSecondsPerPacket(b)).toBe(135);
+    expect(estimateSecondsPerPacket({ ...b, gen_tps: null })).toBeNull();
   });
 });

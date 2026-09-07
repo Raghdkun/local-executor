@@ -148,3 +148,37 @@ describe("updateConfigModel", () => {
     expect(await updateConfigModel(join(home, "nope.json"), "x")).toBe(false);
   });
 });
+
+describe("installTarget: benchmark, num_ctx, .lex ignore", () => {
+  it("stores a matching benchmark, applies numCtx only on fresh installs, drops stale benchmarks", async () => {
+    const target = userTarget("claude", { home, projectRoot: null });
+    const bench = {
+      model: "qwen3.5:9b",
+      prompt_tps: 400,
+      gen_tps: 16,
+      prompt_tokens: 2000,
+      load_ms: 100,
+      measured_at: "t",
+    };
+    const { record } = await installTarget({ ...base(), target, benchmark: bench, numCtx: 32768 });
+    let cfg = JSON.parse(await readFile(record.configPath, "utf8"));
+    expect(cfg.num_ctx).toBe(32768);
+    expect(cfg.benchmark).toEqual(bench);
+    // Re-install with a different model and no benchmark: num_ctx kept, benchmark dropped.
+    await installTarget({ ...base(), target, model: "gemma4:e4b", numCtx: 16384 });
+    cfg = JSON.parse(await readFile(record.configPath, "utf8"));
+    expect(cfg.num_ctx).toBe(32768);
+    expect(cfg.benchmark).toBeUndefined();
+    // updateConfigModel with a benchmark for the new model stores it.
+    await updateConfigModel(record.configPath, "gemma4:e4b", { ...bench, model: "gemma4:e4b" });
+    cfg = JSON.parse(await readFile(record.configPath, "utf8"));
+    expect(cfg.benchmark.model).toBe("gemma4:e4b");
+  });
+
+  it("creates <repo>/.lex/.gitignore for project installs", async () => {
+    const projT = projectTarget("cursor", { home, projectRoot: proj });
+    if (!projT) throw new Error("expected project target");
+    await installTarget({ ...base(), target: projT, projectRoot: proj });
+    expect(await readFile(join(proj, ".lex", ".gitignore"), "utf8")).toBe("*\n");
+  });
+});

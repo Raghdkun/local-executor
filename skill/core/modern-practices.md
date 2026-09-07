@@ -51,6 +51,16 @@ Every block is short on purpose: a small model follows five concrete bullets bet
 - Pattern matching and switch expressions. `IReadOnlyList<T>` on public surfaces.
 - xUnit.
 
+## Dart / Flutter
+- Dart ≥ 3.5 with sound null safety. No `!` on values you introduced; use `?.`, `??`, a local `final x = maybe; if (x == null) return …;`, or make the type non-nullable at the source.
+- Match collection types exactly: a parameter typed `List<T>` needs a `List` (`.toList()`), not an `Iterable`; return the declared type, not a `where()` result.
+- Add every import the packet names, by the exact path given. Do not rely on transitive imports.
+- Call the constructor or builder the packet names: if a field is a `FooGenerator`, produce one (`….build()`), not the `Foo` it generates.
+- `final` by default; `const` constructors where possible; `switch` expressions and pattern matching; `sealed` classes for closed hierarchies; records for small multi-value returns.
+- Async: `async`/`await` with `Future<T>`; never ignore a `Future` (`unawaited(...)` only with a comment).
+- Flutter: `StatelessWidget` unless state is needed; no business logic in `build()`; keys on list children; `const` widgets.
+- Tests: `package:test` / `flutter_test`, one behavior per `test(...)`, `expect` with matchers.
+
 ## Shell (when unavoidable)
 - Bash: `set -euo pipefail`, quote every variable, `[[ ]]` tests, no parsing `ls`.
 - PowerShell: `Set-StrictMode -Version Latest`, `$ErrorActionPreference = 'Stop'`.

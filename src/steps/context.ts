@@ -2,7 +2,7 @@ import type { InstallOutcome } from "../agents/install.js";
 import type { AgentDetection, AgentId } from "../agents/types.js";
 import type { HardwareProfile } from "../hardware/types.js";
 import type { RecommendationReport } from "../models/recommend.js";
-import type { OllamaClient, WarmupResult } from "../ollama/client.js";
+import type { Benchmark, OllamaClient, WarmupResult } from "../ollama/client.js";
 
 export interface InitOptions {
   yes: boolean;
@@ -44,6 +44,7 @@ export interface RunContext {
   modelSizeGB?: number;
   pulled?: boolean;
   warmup?: WarmupResult | null;
+  benchmark?: Benchmark | null;
   detections: AgentDetection[];
   agents: AgentId[];
   projectRoot: string | null;

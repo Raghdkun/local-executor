@@ -11,14 +11,15 @@ Installed by `local-executor` v{{LEX_VERSION}}. Executor model: `{{LEX_MODEL}}` 
 
 ## Running the scripts
 
-Use the Bash tool:
+Use the Bash tool. The check is quick; the executor **takes minutes** (see Step 0/3 in PIPELINE.md), so run it with `run_in_background: true` and wait for the completion notification, or give it a `timeout` of 600000. A default 2-minute Bash timeout will kill it mid-generation.
 
 ```bash
-node "{{LEX_RUNTIME}}/check_local.mjs"
-node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --out .lex/response-1.md
+node "{{LEX_RUNTIME}}/check_local.mjs"            # add --bench once per model to measure speed
+node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --dry-run
+node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --out .lex/response-1.md   # background
 ```
 
-Write packets under `.lex/` in the repo (add it to `.gitignore` if it is not already) so the user can inspect them.
+One packet at a time: the runner exits 5 if another one is running (or queues with `--wait`). Write packets under `.lex/` in the repo; the runner creates `.lex/.gitignore` so nothing in there is committed.
 
 ## Inventory step (Step 1 in PIPELINE.md)
 

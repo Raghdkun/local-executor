@@ -220,3 +220,12 @@ export function recommendModels(
 ): Recommendation[] {
   return buildRecommendation(hw, opts).list;
 }
+
+/**
+ * Context window to install with. The KV cache grows with num_ctx, so only
+ * machines with clear headroom above the model file get the larger default.
+ */
+export function recommendNumCtx(effectiveGB: number, modelSizeGB: number | undefined): number {
+  const headroom = effectiveGB - (modelSizeGB ?? 8);
+  return headroom >= 12 ? 32768 : 16384;
+}

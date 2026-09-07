@@ -1,6 +1,7 @@
 import { installTarget } from "../agents/install.js";
 import { resolveTargets } from "../agents/paths.js";
 import { renderModelsDoc } from "../models/doc.js";
+import { recommendNumCtx } from "../models/recommend.js";
 import { contractTilde, home } from "../util/fs.js";
 import * as log from "../util/log.js";
 import { packageVersion, skillSourceDir } from "../util/pkg.js";
@@ -27,6 +28,7 @@ export async function stepSkills(ctx: RunContext): Promise<void> {
   );
   const modelsDoc = renderModelsDoc(ctx.hw, ctx.report, ctx.model);
   const version = packageVersion();
+  const numCtx = recommendNumCtx(ctx.report.effectiveMemory.gb, ctx.modelSizeGB);
   let manifest = await readManifest();
 
   for (const target of targets) {
@@ -37,6 +39,9 @@ export async function stepSkills(ctx: RunContext): Promise<void> {
       ollamaUrl: ctx.client.baseUrl,
       version,
       modelsDoc,
+      benchmark: ctx.benchmark ?? null,
+      numCtx,
+      projectRoot: ctx.projectRoot,
     });
     ctx.installs.push(outcome);
     manifest = upsertInstall(manifest, outcome.record);
@@ -46,5 +51,8 @@ export async function stepSkills(ctx: RunContext): Promise<void> {
 
   manifest.model = ctx.model;
   await writeManifest(manifest);
+  log.info(
+    `Context window (num_ctx) for new installs: ${numCtx} tokens${numCtx > 16384 ? " (this machine has headroom for it)" : ""}.`,
+  );
   log.info(`Install manifest: ${contractTilde((await import("../util/state.js")).manifestPath())}`);
 }

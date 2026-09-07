@@ -183,13 +183,26 @@ The full rules are in [`skill/core/PIPELINE.md`](skill/core/PIPELINE.md); this i
 
 **Task packets.** The executor sees one Markdown document and nothing else: Goal, Files you may change, Conventions (including a mandatory *modern practices* block for the language, from [`modern-practices.md`](skill/core/modern-practices.md)), the existing code pasted verbatim, the tests pasted verbatim with the exact command that must pass, and a concrete *Do NOT* list. Format in [`handoff-template.md`](skill/core/handoff-template.md).
 
-**Tests first.** The planner writes the tests and puts them in the repo before the executor sees anything. This is the single biggest lever on quality: a small model cannot argue with a failing test.
+**Tests first.** The planner writes the tests and puts them in the repo before the executor sees anything. This is the single biggest lever on quality: a small model cannot argue with a failing test. Test files may be excerpted in the packet (the executor never edits them); files the executor will change must be pasted in full, because it returns whole files.
 
 **Inventory.** Before planning, the agent lists the skills and MCP tools on the machine that help with this task and says which it will use. The executor never gets tools; the planner uses them to write a better packet.
 
-**Execution.** `run_executor.mjs` sends the packet with the system prompt in [`executor-system-prompt.md`](skill/core/executor-system-prompt.md), which forces fenced code blocks tagged with file paths and nothing else. Thinking mode is off. Paths that escape the repo are refused. If the model says it cannot do the task, the script exits with code 4 so the planner can escalate instead of retrying.
+**Execution.** `run_executor.mjs` streams the packet to Ollama with the system prompt in [`executor-system-prompt.md`](skill/core/executor-system-prompt.md), which forces fenced code blocks tagged with file paths and nothing else. Thinking mode is off. Paths that escape the repo are refused. A packet takes minutes on a laptop (a 9B model generates 10–20 tokens/s and a full file is 1–3k tokens), so the runner prints progress, holds a lock so only one packet runs per server, checks the token budget against `num_ctx` before sending, and diffs the reply against the files on disk. Distinct exit codes tell the planner what happened:
+
+| Exit | Meaning |
+|---|---|
+| 0 | Files returned (and written, with `--apply`) |
+| 2 | Ollama or network error; the message names the cause |
+| 3 | No code blocks in the reply |
+| 4 | The model declared it cannot do the task |
+| 5 | Executor busy: another packet is running (`--wait` queues instead) |
+| 6 | Every returned file is byte-identical to disk, which is never a valid result |
+
+`--dry-run` prints the token estimate, the budget verdict, and the expected duration without sending anything. Backups of overwritten files go under `<repo>/.lex/backups/`, and the runner writes `.lex/.gitignore` so nothing in `.lex/` is committed.
 
 **The audit contract.** Only after tests pass. The auditor is never the local model and never the context that wrote the packet. It answers `VERDICT: ACCEPT | REJECT`, a numbered list of issues tagged `blocker | major | minor`, and `MISSING TESTS`. Any blocker is a reject. Prompt in [`audit-prompt.md`](skill/core/audit-prompt.md).
+
+**Retries name the fix.** A retry packet carries a numbered "fix exactly these, nothing else" list (symbol, what is wrong, the exact replacement) plus the trimmed failure. That is the form small models follow; raw test output alone tends to produce the same file again, which the runner now rejects.
 
 **Three attempts, then escalate.** Test failures and audit rejects both count. After three, or when a packet would exceed about 6,000 tokens of pasted code, or when the executor returns prose twice in a row, the planner does the task itself and logs one line saying why. The local model is a cost saver, not a replacement.
 
@@ -248,17 +261,26 @@ Each install has its own `runtime/config.json`, read by the scripts next to it:
 | `ollama_url` | `http://localhost:11434` | Where the server listens. |
 | `model` | chosen at install | Executor tag. Change with `lex switch <tag>`. |
 | `fallback_model` | `qwen3.5:4b` | Informational; a smaller tag to try if the main one is too slow. |
-| `num_ctx` | `16384` | Context window in tokens. Halve it before stepping down a model size if memory is tight. |
+| `num_ctx` | `16384`, or `32768` on machines with 12 GB+ of headroom above the model file | Context window in tokens. The runner refuses packets that cannot fit and warns above 85%. Halve it before stepping down a model size if memory is tight. |
 | `temperature` | `0.1` | Low on purpose; executors should be boring. |
 | `keep_alive` | `"30m"` | How long Ollama keeps the model loaded after a request. |
 | `timeout_seconds` | `600` | Per-request timeout for the executor. |
 | `think` | `false` | Disables Qwen/Gemma thinking mode so tokens go to code. |
+| `benchmark` | measured at install | Prompt and generation tokens/s for `model`, from a 2k-token probe. `check_local.mjs` and `run_executor.mjs` use it to print "about N min per packet". Refresh with `check_local.mjs --bench`; dropped automatically when the model changes. |
 
 Re-running `lex init` keeps your edits to fields other than `model` and `ollama_url`. `lex` keeps its own bookkeeping in `~/.local-executor/manifest.json` (what was installed where) and a 24-hour cache of the latest Ollama release tag; set `LEX_HOME` to move that directory.
 
 ## Troubleshooting
 
 **Ollama not reachable.** `lex doctor` says `ollama server: not reachable`. Open the Ollama app (macOS/Windows) or run `ollama serve` in a terminal. If you run Ollama on another machine or port, pass `--ollama-url` or set `OLLAMA_HOST`; `lex` writes it into each config.
+
+**`EXECUTOR ERROR: fetch failed` on real packets while `check_local` says READY.** Versions before 0.2.0 sent non-streaming requests, and Node's fetch gives up waiting for headers after about five minutes, which a 9B model easily exceeds on a 4k-token packet. Update (`npx local-executor@latest --yes` re-installs the runtime) — the runner now streams, prints progress every 10 s, and names the underlying cause code in any error.
+
+**`EXECUTOR BUSY` (exit 5).** Ollama serves one request at a time; a second packet would silently wait. Run packets one at a time, or pass `--wait` to queue.
+
+**Exit 6, "returned files unchanged".** The model handed back the file it was given. Retry with the numbered "fix exactly these" list from the handoff template rather than raw test output; after that, escalate.
+
+**Packets take 5–10 minutes.** Normal for a 9B model on a laptop: `check_local.mjs` prints the measured estimate. Agents should run the executor in the background (the Claude Code adapter says so explicitly; a default 2-minute tool timeout kills it mid-generation). To speed up: a smaller model for mechanical packets (`lex switch qwen3.5:4b`), or smaller packets.
 
 **Slow, or the model keeps reloading.** Watch memory while a packet runs: macOS Activity Monitor → Memory → the *Memory Pressure* graph (yellow or red means swapping); Windows Task Manager → Performance → GPU → *Dedicated GPU memory* (full means spilling to RAM). Fixes in order: close other GPU/memory-hungry apps; set `num_ctx` to `8192` in `config.json`; `lex switch` to the next tier down. A model that swaps runs at 1–2 tokens/sec, which is worse than a smaller one that fits.
 

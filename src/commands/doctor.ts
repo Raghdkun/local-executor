@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { OllamaClient } from "../ollama/client.js";
+import { type Benchmark, estimateSecondsPerPacket, OllamaClient } from "../ollama/client.js";
 import { isOutdated, latestOllamaVersion, releaseCachePath } from "../ollama/release.js";
 import { which } from "../util/exec.js";
 import { contractTilde, exists, readJsonOr, writeJson } from "../util/fs.js";
@@ -91,7 +91,10 @@ export async function collectDoctorChecks(ollamaUrl: string): Promise<DoctorChec
             ? contractTilde(rec.root)
             : `missing ${missing.join(", ")} in ${contractTilde(rec.root)}`,
       });
-      const cfg = await readJsonOr<{ model?: string }>(rec.configPath, {});
+      const cfg = await readJsonOr<{ model?: string; benchmark?: Benchmark; num_ctx?: number }>(
+        rec.configPath,
+        {},
+      );
       const model = cfg.model ?? "(none)";
       const pulled = localModels.includes(model) || localModels.includes(`${model}:latest`);
       checks.push({
@@ -103,6 +106,17 @@ export async function collectDoctorChecks(ollamaUrl: string): Promise<DoctorChec
             : pulled
               ? `${model} pulled`
               : `${model} not pulled — run: ollama pull ${model}`,
+      });
+      const b = cfg.benchmark && cfg.benchmark.model === model ? cfg.benchmark : null;
+      const eta = estimateSecondsPerPacket(b);
+      checks.push({
+        name: `${label} speed`,
+        ok: b !== null,
+        warn: true,
+        detail:
+          b && eta !== null
+            ? `${b.gen_tps} gen / ${b.prompt_tps} prompt tok/s, ~${eta < 90 ? `${eta} s` : `${Math.round(eta / 60)} min`} per packet, num_ctx ${cfg.num_ctx ?? 16384}`
+            : `unmeasured — run: node ${contractTilde(rec.root)}/runtime/check_local.mjs --bench`,
       });
     }
     for (const o of rec.owned.filter((p) => p !== rec.root)) {

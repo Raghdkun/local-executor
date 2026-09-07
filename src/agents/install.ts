@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import type { Benchmark } from "../ollama/client.js";
 import {
   copyDir,
   ensureDir,
@@ -53,6 +54,8 @@ export interface RuntimeConfig {
   keep_alive: string;
   timeout_seconds: number;
   think: boolean;
+  /** Measured speed for `model`; dropped automatically when the model changes. */
+  benchmark?: Benchmark;
 }
 
 export const defaultRuntimeConfig: RuntimeConfig = {
@@ -75,6 +78,12 @@ export interface InstallInput {
   version: string;
   /** Pre-rendered `core/models.md` for this machine. */
   modelsDoc: string;
+  /** Speed measurement for `model`, stored so the runner can estimate packet time. */
+  benchmark?: Benchmark | null;
+  /** Context window for fresh installs; an existing config keeps its own value. */
+  numCtx?: number;
+  /** Repo root for project-scope installs; gets a `.lex/.gitignore`. */
+  projectRoot?: string | null;
 }
 
 export interface InstallOutcome {
@@ -119,16 +128,30 @@ export async function installTarget(input: InstallInput): Promise<InstallOutcome
       join(skillSource, "runtime", "config.json"),
       {},
     );
+    const fresh = Object.keys(existing).length === 0;
     const merged: RuntimeConfig = {
       ...defaultRuntimeConfig,
       ...shipped,
       ...existing,
+      ...(fresh && input.numCtx ? { num_ctx: input.numCtx } : {}),
       model,
       ollama_url: input.ollamaUrl,
     };
+    if (input.benchmark && input.benchmark.model === model) merged.benchmark = input.benchmark;
+    else if (merged.benchmark && merged.benchmark.model !== model) delete merged.benchmark;
     await writeJson(configPath, merged);
     owned.push(target.root);
     actions.push(`${existed ? "Updated" : "Created"} ${target.root}`);
+  }
+
+  if (target.scope === "project" && input.projectRoot) {
+    // Packets, responses, and backups live in <repo>/.lex; keep them out of git
+    // without touching the user's .gitignore.
+    const lexIgnore = join(input.projectRoot, ".lex", ".gitignore");
+    if (!(await exists(lexIgnore))) {
+      await writeText(lexIgnore, "*\n");
+      actions.push(`Created ${lexIgnore} (keeps packets and backups out of git)`);
+    }
   }
 
   for (const a of target.adapters) {
@@ -200,10 +223,20 @@ export async function uninstallRecord(rec: InstallRecord): Promise<string[]> {
   return actions;
 }
 
-/** Update the model in an installed config.json. Returns false if the file is missing. */
-export async function updateConfigModel(configPath: string, model: string): Promise<boolean> {
+/**
+ * Update the model (and its benchmark) in an installed config.json. A stale
+ * benchmark for a different model is dropped. Returns false if the file is missing.
+ */
+export async function updateConfigModel(
+  configPath: string,
+  model: string,
+  benchmark?: Benchmark | null,
+): Promise<boolean> {
   if (!(await exists(configPath))) return false;
   const cfg = await readJsonOr<Partial<RuntimeConfig>>(configPath, {});
-  await writeJson(configPath, { ...defaultRuntimeConfig, ...cfg, model });
+  const next: RuntimeConfig = { ...defaultRuntimeConfig, ...cfg, model };
+  if (benchmark && benchmark.model === model) next.benchmark = benchmark;
+  else if (next.benchmark && next.benchmark.model !== model) delete next.benchmark;
+  await writeJson(configPath, next);
   return true;
 }

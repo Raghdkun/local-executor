@@ -5,7 +5,7 @@ When the user says "use the local model", "use the local executor", "hand this t
 Codex-specific notes:
 
 - Check the executor: `node "{{LEX_RUNTIME}}/check_local.mjs"`.
-- Run a packet: `node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --out .lex/response-1.md`. The script only talks to `127.0.0.1:11434`. If the sandbox blocks that call, ask for approval to run it outside the sandbox rather than disabling the sandbox globally.
+- Run a packet: `node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --out .lex/response-1.md`. It takes minutes (check_local prints the estimate; `--dry-run` checks the budget first), so run it in the background and one at a time (exit 5 = one already running). The script only talks to `127.0.0.1:11434`. If the sandbox blocks that call, ask for approval to run it outside the sandbox rather than disabling the sandbox globally. The runner creates `.lex/.gitignore` so packets and backups stay out of git.
 - Inventory (Step 1): skills live in `~/.codex/skills/` and in sections of this file; MCP servers are in `~/.codex/config.toml`.
 - Audit (Step 4): run a **second** Codex invocation with a fresh context so the reviewer has not seen your planning:
   `codex exec --model <strongest model you have> "$(cat .lex/audit-1.md)"`

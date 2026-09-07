@@ -3,6 +3,7 @@ import {
   buildRecommendation,
   effectiveMemory,
   recommendModels,
+  recommendNumCtx,
   tierFor,
 } from "../../src/models/recommend.js";
 import { hw, linuxCpuOnly, pcNvidia16 } from "./fixtures.js";
@@ -180,5 +181,15 @@ describe("recommendModels", () => {
 
   it("has sizeGB on every entry for display", () => {
     for (const r of recommendModels(hw())) expect(r.sizeGB).toBeGreaterThan(0);
+  });
+});
+
+describe("recommendNumCtx", () => {
+  it("gives 32k only with clear headroom above the model file", () => {
+    expect(recommendNumCtx(11.2, 6.6)).toBe(16384); // 16 GB Mac, qwen3.5:9b
+    expect(recommendNumCtx(22.4, 6.6)).toBe(32768); // 32 GB Mac, qwen3.5:9b
+    expect(recommendNumCtx(22.4, 19)).toBe(16384); // 32 GB Mac, gemma4:26b
+    expect(recommendNumCtx(44.8, 23)).toBe(32768); // 64 GB Mac, qwen3.6:35b-a3b
+    expect(recommendNumCtx(11.2, undefined)).toBe(16384);
   });
 });
