@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Entries are generated from
 conventional commits by release-please.
 
+## [0.1.1](https://github.com/Raghdkun/local-executor/compare/v0.1.0...v0.1.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **ci:** platform-agnostic path expectations in tests; publish via npm trusted publishing ([e01e05c](https://github.com/Raghdkun/local-executor/commit/e01e05c25415e965f3744d1120d7a3d3582d8726))
+* **ci:** support Node 20 (execa 9) and force LF line endings for Windows checkouts ([33b05cb](https://github.com/Raghdkun/local-executor/commit/33b05cbfc09ab095bbfe7d018e679a8c333f6778))
+
 ## 0.1.0 (unreleased)
 
 ### Features

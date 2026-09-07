@@ -1,6 +1,6 @@
 {
   "name": "local-executor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Set up a planner → local executor → auditor AI coding pipeline: installs Ollama, picks a right-sized open-weight model for your hardware, and installs the skill into Claude Code, Codex CLI, Cursor, and Windsurf.",
   "type": "module",
   "license": "MIT",
