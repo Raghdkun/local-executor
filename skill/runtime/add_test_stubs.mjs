@@ -44,7 +44,7 @@ export function detectFramework(file, content) {
   return "generic";
 }
 
-const escape = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+const quoteStr = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
 export function renderStub(framework, description) {
   const d = escape(description);
