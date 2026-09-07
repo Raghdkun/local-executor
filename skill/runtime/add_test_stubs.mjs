@@ -47,7 +47,7 @@ export function detectFramework(file, content) {
 const quoteStr = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
 export function renderStub(framework, description) {
-  const d = escape(description);
+  const d = quoteStr(description);
   switch (framework) {
     case "vitest":
     case "jest":
@@ -93,7 +93,7 @@ export function appendStubs(content, descriptions, framework) {
   const added = [];
   let out = content;
   for (const d of descriptions) {
-    if (content.includes(escape(d)) || out.includes(escape(d))) continue;
+    if (content.includes(quoteStr(d)) || out.includes(quoteStr(d))) continue;
     if (!out.endsWith("\n")) out += "\n";
     out += `\n${renderStub(framework, d)}`;
     added.push(d);
