@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { lastVerified } from "../../src/models/catalog.js";
 import {
   catalogAgeDays,
   diffFamily,
@@ -81,7 +82,8 @@ describe("refreshCatalog", () => {
         );
       return new Response("nope", { status: 503 });
     };
-    const r = await refreshCatalog(fetchImpl, new Date("2026-10-06T00:00:00Z"));
+    const later = new Date(new Date(lastVerified).getTime() + 30 * 86_400_000);
+    const r = await refreshCatalog(fetchImpl, later);
     expect(r.catalogAgeDays).toBe(30);
     expect(r.newFamilies).toEqual(["qwen3.7", "codestral-next"]);
     expect(r.errors.length).toBeGreaterThan(0);
@@ -104,7 +106,8 @@ describe("refreshCatalog", () => {
   });
 
   it("catalogAgeDays counts from lastVerified", () => {
-    expect(catalogAgeDays(new Date("2026-09-06T12:00:00Z"))).toBe(0);
-    expect(catalogAgeDays(new Date("2026-11-05T12:00:00Z"))).toBe(60);
+    const base = new Date(lastVerified).getTime();
+    expect(catalogAgeDays(new Date(base + 12 * 3_600_000))).toBe(0);
+    expect(catalogAgeDays(new Date(base + 60 * 86_400_000 + 3_600_000))).toBe(60);
   });
 });

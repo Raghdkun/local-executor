@@ -21,7 +21,7 @@ describe("pickFallback", () => {
         "gemma4:e4b",
         9.6,
       ),
-    ).toBe("qwen3.5:4b");
+    ).toBe("qwen3.5:9b");
   });
   it("returns null when nothing meaningfully smaller exists or size is unknown", () => {
     expect(pickFallback(list, "qwen3.5:2b", 2.7)).toBeNull();
