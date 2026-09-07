@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Entries are generated from
 conventional commits by release-please.
 
+## [0.2.0](https://github.com/Raghdkun/local-executor/compare/v0.1.1...v0.2.0) (2026-09-07)
+
+
+### Features
+
+* **runtime:** stream executor requests, lock, budget checks, benchmark, unchanged detection ([56917b6](https://github.com/Raghdkun/local-executor/commit/56917b668849bb229e302a40223e18a14807635c))
+
 ## [0.1.1](https://github.com/Raghdkun/local-executor/compare/v0.1.0...v0.1.1) (2026-09-07)
 
 
