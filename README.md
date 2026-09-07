@@ -121,6 +121,16 @@ qwen3.5:9b ready: 17.4 tok/s (load 4 s, 64 tokens generated)
 │
 ```
 
+## Updating
+
+`lex init` is idempotent, so updating on any machine that already has the tool is one command:
+
+```bash
+npx local-executor@latest --yes
+```
+
+It rewrites the files it owns (pipeline docs, runtime scripts, adapters) in every agent it finds, re-measures speed, and keeps your `config.json` edits and your model. Use the explicit `@latest`; plain `npx local-executor` can reuse an older copy from the npx cache. Add `--skip-pull` to leave models alone and `--skip-verify` to skip the end-to-end packet. If you installed globally, `npm i -g local-executor@latest && lex --yes`. `lex doctor` shows what is installed; the first lines of each installed `SKILL.md` name the version that wrote it.
+
 ## Which model will I get?
 
 The decision is driven by **effective memory**: the memory a model can realistically occupy once the OS, your editor, and your agent have theirs.
