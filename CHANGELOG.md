@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Entries are generated from
 conventional commits by release-please.
 
+## [0.4.0](https://github.com/Raghdkun/local-executor/compare/v0.3.0...v0.4.0) (2026-09-07)
+
+
+### Features
+
+* packet linter, run history + lex stats, audit-to-test stubs, remote executor, catalog bot ([d213231](https://github.com/Raghdkun/local-executor/commit/d213231169703e16c9c70e4988c05c541a6aed30))
+
+
+### Bug Fixes
+
+* **lint:** avoid shadowing global escape; drop unused import ([f385e4f](https://github.com/Raghdkun/local-executor/commit/f385e4f3bb1e7f4188728073fef378449d3484d8))
+* **runtime:** rename all quote helper call sites in add_test_stubs ([6742e55](https://github.com/Raghdkun/local-executor/commit/6742e55f513eac47d92edb8100d5d2a4cd36700a))
+
 ## [0.3.0](https://github.com/Raghdkun/local-executor/compare/v0.2.0...v0.3.0) (2026-09-07)
 
 
