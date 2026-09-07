@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Entries are generated from
 conventional commits by release-please.
 
+## [0.3.0](https://github.com/Raghdkun/local-executor/compare/v0.2.0...v0.3.0) (2026-09-07)
+
+
+### Features
+
+* agent-driven model choice, live catalog refresh, newest verified models ([632165a](https://github.com/Raghdkun/local-executor/commit/632165a51c0c4180702a2becce7766156967eac5))
+
+
+### Bug Fixes
+
+* **test:** expectations for catalog date, refresh, and fallback picker ([50ac9a6](https://github.com/Raghdkun/local-executor/commit/50ac9a6e3916505e88ea7dcdcabdbf53e7bd20f2))
+
+
+### Documentation
+
+* add Updating section to README ([1a8da27](https://github.com/Raghdkun/local-executor/commit/1a8da2799919306f83fd51f742c8f86628b89835))
+* note sudo for root-owned global npm prefix in Updating ([f2fb16d](https://github.com/Raghdkun/local-executor/commit/f2fb16d06b61bd40260c6aedf01c999992efa128))
+* real two-attempt packet transcript in EXAMPLE_RUN.md ([b0843b7](https://github.com/Raghdkun/local-executor/commit/b0843b771434376ed8df3df4f7c852a57d1609fc))
+
 ## [0.2.0](https://github.com/Raghdkun/local-executor/compare/v0.1.1...v0.2.0) (2026-09-07)
 
 
