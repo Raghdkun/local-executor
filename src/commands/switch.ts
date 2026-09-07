@@ -3,7 +3,7 @@ import { findModel } from "../models/catalog.js";
 import { OllamaClient } from "../ollama/client.js";
 import type { RunContext } from "../steps/context.js";
 import { isValidTag, pullModel, warmupModel } from "../steps/model.js";
-import { contractTilde } from "../util/fs.js";
+import { contractTilde, readJsonOr } from "../util/fs.js";
 import * as log from "../util/log.js";
 import { readManifest, writeManifest } from "../util/state.js";
 
@@ -22,7 +22,16 @@ export async function runSwitch(
     return 1;
   }
   log.intro(`lex switch ${tag}`);
-  const client = new OllamaClient(opts.ollamaUrl);
+  const firstCfg = manifest.installs[0]
+    ? await readJsonOr<{ ollama_token?: string; ollama_token_env?: string }>(
+        manifest.installs[0].configPath,
+        {},
+      )
+    : {};
+  const token =
+    firstCfg.ollama_token ||
+    (firstCfg.ollama_token_env ? process.env[firstCfg.ollama_token_env] : undefined);
+  const client = new OllamaClient(opts.ollamaUrl, undefined, token);
   const ctx = {
     client,
     opts: { ...opts, skipPull: false },

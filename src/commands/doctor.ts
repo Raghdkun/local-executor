@@ -17,10 +17,26 @@ export interface DoctorCheck {
 
 export async function collectDoctorChecks(ollamaUrl: string): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
-  const client = new OllamaClient(ollamaUrl);
+  // A remote executor's token lives in the installed config; reuse it for the checks.
+  const manifest0 = await readManifest();
+  const first = manifest0.installs.find((i) => i.owned.includes(i.root));
+  const cfg0 = first
+    ? await readJsonOr<{ ollama_token?: string; ollama_token_env?: string }>(first.configPath, {})
+    : {};
+  const token =
+    cfg0.ollama_token || (cfg0.ollama_token_env ? process.env[cfg0.ollama_token_env] : undefined);
+  const client = new OllamaClient(ollamaUrl, undefined, token);
+  if (client.isRemote) {
+    checks.push({
+      name: "executor",
+      ok: true,
+      detail: `remote at ${ollamaUrl}${token ? " (bearer token)" : " (no token)"}`,
+    });
+  }
 
   const bin = await which("ollama");
-  checks.push({ name: "ollama binary", ok: bin !== null, detail: bin ?? "not on PATH" });
+  if (!client.isRemote)
+    checks.push({ name: "ollama binary", ok: bin !== null, detail: bin ?? "not on PATH" });
 
   const version = await client.version();
   checks.push({

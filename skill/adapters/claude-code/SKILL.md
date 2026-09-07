@@ -47,6 +47,11 @@ Task(
 
 Never audit in your own context when the Task tool is available. The auditor may read the repo but must not edit it; say so in the prompt.
 
+## After tests and audit
+
+- `node "{{LEX_RUNTIME}}/record_result.mjs" --run <id> --tests pass|fail`, then `--audit accept|reject --model opus`. The user can see pass rates with `lex stats`.
+- On ACCEPT with MISSING TESTS: save the subagent's reply to `.lex/audit-N.md` and run `node "{{LEX_RUNTIME}}/add_test_stubs.mjs" --verdict .lex/audit-N.md --into <test file>`, then fill the stubs (Edit tool) or make them the next packet.
+
 ## Escalation
 
 When PIPELINE.md says to escalate, do the task yourself in this same session and tell the user in one line why the executor could not finish.

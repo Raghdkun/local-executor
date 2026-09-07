@@ -69,11 +69,26 @@ export interface LocalModel {
 
 export class OllamaClient {
   readonly baseUrl: string;
+  readonly token: string | undefined;
   private readonly fetchImpl: FetchLike;
 
-  constructor(baseUrl: string = DEFAULT_OLLAMA_URL, fetchImpl: FetchLike = (i, o) => fetch(i, o)) {
+  constructor(
+    baseUrl: string = DEFAULT_OLLAMA_URL,
+    fetchImpl: FetchLike = (i, o) => fetch(i, o),
+    token?: string,
+  ) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.fetchImpl = fetchImpl;
+    this.token = token || undefined;
+  }
+
+  /** True when the server is not on this machine. */
+  get isRemote(): boolean {
+    return !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:|\/|$)/.test(this.baseUrl);
+  }
+
+  private headers(extra: Record<string, string> = {}): Record<string, string> {
+    return this.token ? { ...extra, Authorization: `Bearer ${this.token}` } : extra;
   }
 
   /** Server version, or null when unreachable. Never throws. */
@@ -81,6 +96,7 @@ export class OllamaClient {
     try {
       const res = await this.fetchImpl(`${this.baseUrl}/api/version`, {
         signal: AbortSignal.timeout(timeoutMs),
+        headers: this.headers(),
       });
       if (!res.ok) return null;
       const data = (await res.json()) as { version?: string };
@@ -98,7 +114,13 @@ export class OllamaClient {
   async list(): Promise<LocalModel[]> {
     const res = await this.fetchImpl(`${this.baseUrl}/api/tags`, {
       signal: AbortSignal.timeout(5000),
+      headers: this.headers(),
     });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `Ollama at ${this.baseUrl} rejected the request (HTTP ${res.status}); a token is required (--ollama-token-env).`,
+      );
+    }
     if (!res.ok) throw new Error(`Ollama /api/tags returned HTTP ${res.status}`);
     const data = (await res.json()) as { models?: { name: string; size?: number }[] };
     return (data.models ?? []).map((m) => ({ name: m.name, sizeBytes: m.size ?? 0 }));
@@ -116,7 +138,7 @@ export class OllamaClient {
   async pull(tag: string, onEvent: (e: PullEvent) => void, signal?: AbortSignal): Promise<void> {
     const res = await this.fetchImpl(`${this.baseUrl}/api/pull`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ model: tag, stream: true }),
       ...(signal ? { signal } : {}),
     });
@@ -137,7 +159,7 @@ export class OllamaClient {
   async warmup(tag: string, keepAlive = "30m", timeoutMs = 180_000): Promise<WarmupResult> {
     const res = await this.fetchImpl(`${this.baseUrl}/api/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         model: tag,
         prompt:
@@ -179,7 +201,7 @@ export class OllamaClient {
   ): Promise<Benchmark> {
     const res = await this.fetchImpl(`${this.baseUrl}/api/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         model: tag,
         prompt: benchmarkPrompt(),

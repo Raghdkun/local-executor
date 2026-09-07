@@ -44,6 +44,8 @@ export async function stepSkills(ctx: RunContext): Promise<void> {
       numCtx,
       ...(fallbackModel ? { fallbackModel } : {}),
       projectRoot: ctx.projectRoot,
+      ...(ctx.opts.ollamaToken ? { ollamaToken: ctx.opts.ollamaToken } : {}),
+      ...(ctx.opts.ollamaTokenEnv ? { ollamaTokenEnv: ctx.opts.ollamaTokenEnv } : {}),
     });
     ctx.installs.push(outcome);
     manifest = upsertInstall(manifest, outcome.record);

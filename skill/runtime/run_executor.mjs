@@ -33,11 +33,12 @@
  *   1 usage            4 executor declared it cannot (EXECUTOR_CANNOT.md)
  *   2 Ollama/network   5 executor busy (another run in progress)
  */
-import { createHash } from "node:crypto";
-import { access, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { access, appendFile, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { lintPacket } from "./check_packet.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CANNOT_FILE = "EXECUTOR_CANNOT.md";
@@ -45,6 +46,29 @@ const BLOCK_RE = /```([\w+#.-]*)[ \t]+path=(\S+)[ \t]*\r?\n([\s\S]*?)\r?\n?```/g
 /** Rough chars-per-token for code and English mixed; errs on the high side. */
 const CHARS_PER_TOKEN = 3.6;
 const PROGRESS_EVERY_MS = 10_000;
+
+/**
+ * Headers for every Ollama request. A remote executor (shared GPU box behind
+ * a reverse proxy) needs a bearer token: `ollama_token` in config.json, or the
+ * name of an environment variable in `ollama_token_env` so the secret is not
+ * written to disk.
+ */
+export function authHeaders(config, env = process.env) {
+  const token =
+    config.ollama_token || (config.ollama_token_env ? env[config.ollama_token_env] : undefined);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** Attempt number from an explicit flag or from the retry section of the packet. */
+export function attemptNumber(packet, explicit) {
+  if (explicit) return Number(explicit);
+  const m = /^## Previous attempt failed[^\n]*\n[\s\S]*?Attempt\s+(\d+)/m.exec(packet);
+  return m ? Number(m[1]) + 1 : 1;
+}
+
+export function newRunId() {
+  return `${new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-")}-${randomBytes(3).toString("hex")}`;
+}
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for tests)
@@ -220,7 +244,7 @@ export async function compareWithExisting(root, blocks) {
 
 function usage(code) {
   console.error(
-    "usage: run_executor.mjs --packet <file> --out <file> [--apply] [--root <dir>] [--model <tag>] [--json] [--wait] [--dry-run] [--allow-unchanged]",
+    "usage: run_executor.mjs --packet <file> --out <file> [--apply] [--root <dir>] [--model <tag>] [--json] [--wait] [--dry-run] [--allow-unchanged] [--no-lint] [--attempt N] [--packet-id <id>]",
   );
   process.exit(code);
 }
@@ -234,6 +258,9 @@ function parseArgs(argv, config) {
     wait: false,
     dryRun: false,
     allowUnchanged: false,
+    lint: true,
+    attempt: undefined,
+    packetId: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -242,6 +269,9 @@ function parseArgs(argv, config) {
     else if (a === "--wait") args.wait = true;
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--allow-unchanged") args.allowUnchanged = true;
+    else if (a === "--no-lint") args.lint = false;
+    else if (a === "--attempt") args.attempt = argv[++i];
+    else if (a === "--packet-id") args.packetId = argv[++i];
     else if (a === "--packet") args.packet = argv[++i];
     else if (a === "--out") args.out = argv[++i];
     else if (a === "--root") args.root = argv[++i];
@@ -266,7 +296,7 @@ async function callOllama(config, model, systemPrompt, packet, onProgress) {
   try {
     const res = await fetch(`${config.ollama_url}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders(config) },
       signal: controller.signal,
       body: JSON.stringify({
         model,
@@ -366,6 +396,26 @@ async function main() {
   const numCtx = config.num_ctx ?? 16384;
   const log = (m) => console.error(m);
 
+  // Lint the packet before spending minutes on it.
+  if (args.lint) {
+    const lint = lintPacket(packet, { numCtx, systemTokens: estimateTokens(systemPrompt) });
+    for (const w of lint.warnings) log(`PACKET WARNING: ${w}`);
+    if (lint.errors.length > 0) {
+      for (const e of lint.errors) log(`PACKET ERROR: ${e}`);
+      log("Fix the packet (see handoff-template.md) or pass --no-lint to send anyway.");
+      if (args.json)
+        console.log(
+          JSON.stringify({
+            ok: false,
+            reason: "packet_invalid",
+            errors: lint.errors,
+            warnings: lint.warnings,
+          }),
+        );
+      return 1;
+    }
+  }
+
   // Budget and time estimates (before touching the network).
   const promptTokens = estimateTokens(systemPrompt) + estimateTokens(packet) + 32;
   const expectedOutput = expectedOutputTokens(packet);
@@ -419,7 +469,16 @@ async function main() {
 
   // The requested model must be pulled; never pull implicitly.
   try {
-    const res = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${config.ollama_url}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+      headers: authHeaders(config),
+    });
+    if (res.status === 401 || res.status === 403) {
+      log(
+        `AUTH: ${config.ollama_url} rejected the request (HTTP ${res.status}). Set ollama_token or ollama_token_env in config.json for a remote executor.`,
+      );
+      return 2;
+    }
     const names = ((await res.json()).models ?? []).map((m) => m.name);
     if (!names.includes(args.model) && !names.includes(`${args.model}:latest`)) {
       log(
@@ -480,13 +539,30 @@ async function main() {
       ? Math.round((result.evalCount / (result.evalDurationMs / 1000)) * 10) / 10
       : null;
   const elapsed = Math.round((Date.now() - started) / 1000);
+  const runId = newRunId();
+  const attempt = attemptNumber(packet, args.attempt);
   const stats = {
+    run: runId,
+    attempt,
     model: args.model,
     evalCount: result.evalCount,
     promptEvalCount: result.promptEvalCount,
     tokensPerSec: genTps,
     elapsedSeconds: elapsed,
     doneReason: result.doneReason,
+  };
+  const record = async (outcome, extra = {}) => {
+    try {
+      const dir = join(args.root, ".lex");
+      await mkdir(dir, { recursive: true });
+      await appendFile(
+        join(dir, "runs.jsonl"),
+        `${JSON.stringify({ type: "run", at: new Date().toISOString(), packet: args.packetId ?? args.packet, promptTokens: result.promptEvalCount || promptTokens, outcome, ...stats, ...extra })}
+`,
+      );
+    } catch {
+      // history is best-effort
+    }
   };
 
   if (result.doneReason === "length")
@@ -495,6 +571,7 @@ async function main() {
     );
 
   if (blocks.length === 0) {
+    await record("no_blocks");
     log(`EXECUTOR RETURNED NO CODE BLOCKS — see ${args.out}`);
     if (args.json)
       console.log(JSON.stringify({ ok: false, reason: "no_blocks", files: [], ...stats }));
@@ -503,6 +580,7 @@ async function main() {
 
   const cannot = blocks.find((b) => b.path === CANNOT_FILE);
   if (cannot) {
+    await record("cannot");
     log("EXECUTOR CANNOT DO THIS TASK:");
     log(cannot.code.trim());
     if (args.json)
@@ -520,6 +598,7 @@ async function main() {
     cmp.created.length === 0 &&
     !args.allowUnchanged
   ) {
+    await record("unchanged", { files: cmp.unchanged });
     log(
       `EXECUTOR RETURNED FILES UNCHANGED: ${cmp.unchanged.join(", ")} are byte-identical to the files on disk. That is never a valid result; retry with a numbered "fix exactly these" list (see handoff-template.md).`,
     );
@@ -551,6 +630,7 @@ async function main() {
     if (written.length > 0) log(`Backups of overwritten files: ${backupDir}`);
   }
 
+  await record("ok", { files: blocks.map((b) => b.path), applied: args.apply });
   if (args.json) {
     console.log(
       JSON.stringify({
@@ -579,6 +659,9 @@ async function main() {
     }
     for (const t of written) console.log(`  wrote ${t}`);
     if (!args.apply) console.log(`Not applied (no --apply). Raw response: ${args.out}`);
+    console.log(
+      `Run id ${runId} (attempt ${attempt}). After the tests: node "${join(here, "record_result.mjs")}" --run ${runId} --tests pass|fail`,
+    );
   }
   return 0;
 }

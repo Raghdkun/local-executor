@@ -37,6 +37,11 @@ export async function stepHardware(ctx: RunContext): Promise<void> {
 
   const report = buildRecommendation(hw);
   ctx.report = report;
+  if (ctx.client.isRemote) {
+    log.warn(
+      `The executor runs on ${ctx.client.baseUrl}, not on this machine. The tier below describes this laptop; pick a model that is pulled on the remote box (the next step lists them).`,
+    );
+  }
   log.info(
     `Effective memory for models: ${log.pc.bold(gb(report.effectiveMemory.gb))} (${report.effectiveMemory.rule}) → tier ${report.tier.label}`,
   );

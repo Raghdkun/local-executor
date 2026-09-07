@@ -53,6 +53,12 @@ export function process${nonce % 97}(items: readonly Item[], opts: Options = {})
   return `${text}\nRead the code above. Reply with the single word OK.`;
 }
 
+export function authHeaders(config, env = process.env) {
+  const token =
+    config.ollama_token || (config.ollama_token_env ? env[config.ollama_token_env] : undefined);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function report(status, message, extra = {}) {
   if (json) console.log(JSON.stringify({ status, message, config: configPath, ...extra }));
   else console.log(`${status}: ${message}`);
@@ -61,7 +67,7 @@ function report(status, message, extra = {}) {
 async function runBenchmark(config) {
   const res = await fetch(`${config.ollama_url}/api/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders(config) },
     body: JSON.stringify({
       model: config.model,
       prompt: benchmarkPrompt(),
@@ -101,7 +107,18 @@ async function main() {
 
   let tags;
   try {
-    const res = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`${config.ollama_url}/api/tags`, {
+      signal: AbortSignal.timeout(3000),
+      headers: authHeaders(config),
+    });
+    if (res.status === 401 || res.status === 403) {
+      report(
+        "AUTH",
+        `${config.ollama_url} rejected the request (HTTP ${res.status}). Set ollama_token or ollama_token_env in config.json.`,
+        { model: config.model },
+      );
+      return 1;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     tags = await res.json();
   } catch {

@@ -163,3 +163,30 @@ describe("benchmark", () => {
     expect(estimateSecondsPerPacket({ ...b, gen_tps: null })).toBeNull();
   });
 });
+
+describe("remote executor", () => {
+  it("detects remote URLs and sends a bearer token", async () => {
+    let auth: string | undefined;
+    const c = new OllamaClient(
+      "http://gpu-box:11434",
+      async (_url: string, init?: RequestInit) => {
+        auth = (init?.headers as Record<string, string> | undefined)?.Authorization;
+        return jsonResponse({ version: "1" });
+      },
+      "secret",
+    );
+    expect(c.isRemote).toBe(true);
+    expect(new OllamaClient("http://localhost:11434").isRemote).toBe(false);
+    expect(new OllamaClient("http://127.0.0.1:11434").isRemote).toBe(false);
+    await c.version();
+    expect(auth).toBe("Bearer secret");
+  });
+
+  it("list() explains a 401 from a remote box", async () => {
+    const c = new OllamaClient(
+      "http://gpu-box:11434",
+      async () => new Response("no", { status: 401 }),
+    );
+    await expect(c.list()).rejects.toThrow(/token is required/);
+  });
+});

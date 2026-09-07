@@ -220,6 +220,26 @@ The full rules are in [`skill/core/PIPELINE.md`](skill/core/PIPELINE.md); this i
 
 **When to skip it.** One-line fixes, renames, anything faster to do than to describe. The skill says so explicitly.
 
+## Packet linter, run history, and auditor-driven tests
+
+- **`lex packet check <file>`** (and `runtime/check_packet.mjs`) validates a packet against the template: required sections, every changeable file pasted in full under Existing code, a Modern practices block, no template placeholders, numbered fixes in retry sections, and the token budget against your `num_ctx`. The runner refuses invalid packets before spending minutes on them (`--no-lint` overrides).
+- **Run history**: every executor run appends a line to `<repo>/.lex/runs.jsonl` (run id, attempt, model, tokens, seconds, outcome). The planner records what happened next with `runtime/record_result.mjs --run <id> --tests pass|fail` and `--audit accept|reject`. **`lex stats`** then shows first-attempt pass rate, audit accept rate, median time, and tok/s per model, per packet size, and per attempt: the numbers you need to tune `fallback_model` vs `model` and to know when to upgrade.
+- **Auditor → tests**: `runtime/add_test_stubs.mjs --verdict <audit reply> --into <test file>` turns the auditor's `MISSING TESTS` list into skipped/todo stubs in the file's framework (node:test, vitest/jest, pytest, Go, Rust, Dart), deduplicated and marked `lex:missing-test`, so coverage grows with every accepted packet.
+
+## Remote executor (shared GPU box)
+
+Several laptops can share one model on a machine with a real GPU:
+
+1. On the box, run Ollama listening on the network (`OLLAMA_HOST=0.0.0.0:11434 ollama serve`, or set it in the app) and pull the models you want to share. Ollama has no built-in auth, so put it behind a reverse proxy that checks a bearer token (Caddy/nginx `Authorization: Bearer …`), or restrict access with a private network such as Tailscale.
+2. On each laptop: `export LEX_OLLAMA_TOKEN=…` then
+
+   ```bash
+   npx local-executor@latest init --ollama-url http://gpu-box:11434 --ollama-token-env LEX_OLLAMA_TOKEN --agents claude
+   ```
+
+   `lex` does not install or start Ollama locally, lists the models pulled on the box and defaults to the largest one it knows, measures that box's speed, and writes `ollama_url` and `ollama_token_env` into every config. The scripts send the token on every request and report `AUTH` if it is rejected. `--ollama-token <literal>` stores the token in `config.json` instead; prefer the env var.
+3. The executor lock is per server URL, so two laptops can still collide on the box; Ollama queues the second request. `lex stats` on each laptop shows the effect.
+
 ## Flags and non-interactive use
 
 `lex` with no subcommand runs `init`. Every prompt has a flag; `lex --yes` completes with zero prompts.
@@ -235,7 +255,10 @@ The full rules are in [`skill/core/PIPELINE.md`](skill/core/PIPELINE.md); this i
 | `--skip-verify` | init | Do not run the end-to-end packet. |
 | `--project` / `--no-project` | init | Force or forbid project-level files (needs a git repo). Default: ask, preselected when Cursor or Windsurf is chosen. |
 | `--allow-install` | init | In `--yes` mode, permit running the Ollama install or upgrade command. Without it, `--yes` prints the command and moves on. |
-| `--ollama-url <url>` | init, doctor, switch | Ollama server; also read from `OLLAMA_HOST`. |
+| `--ollama-url <url>` | init, doctor, switch | Ollama server; also read from `OLLAMA_HOST`. A non-localhost URL switches to remote-executor mode. |
+| `--ollama-token-env <name>` / `--ollama-token <token>` | init | Bearer token for a remote executor, as an env var name (preferred) or a literal. |
+| `--root <dir>` | stats | Repository whose `.lex/runs.jsonl` to read. |
+| `--num-ctx <n>` | packet check | Context window to lint against (default: installed config). |
 | `--all` | models | Include models that do not fit in memory. |
 | `--refresh` | models | Check ollama.com live for newer tags and families; prints a report, changes nothing. |
 | `-v, --version`, `-h, --help` | | |
@@ -256,6 +279,7 @@ Other commands:
 - `lex models` shows the catalog ranked for this machine.
 - `lex switch <tag>` pulls the tag if needed, measures speed, and updates every installed `config.json`.
 - `lex uninstall [--agents …]` removes what was installed, editing (not deleting) shared files like `AGENTS.md`.
+- `lex packet check <file>` lints a packet; `lex stats` reports pass rates from `.lex/runs.jsonl`.
 
 ## Configuration
 
@@ -279,6 +303,7 @@ Each install has its own `runtime/config.json`, read by the scripts next to it:
 | `keep_alive` | `"30m"` | How long Ollama keeps the model loaded after a request. |
 | `timeout_seconds` | `600` | Per-request timeout for the executor. |
 | `think` | `false` | Disables Qwen/Gemma thinking mode so tokens go to code. |
+| `ollama_token_env` / `ollama_token` | unset | Bearer token for a remote executor: env var name (preferred) or literal. |
 | `benchmark` | measured at install | Prompt and generation tokens/s for `model`, from a 2k-token probe. `check_local.mjs` and `run_executor.mjs` use it to print "about N min per packet". Refresh with `check_local.mjs --bench`; dropped automatically when the model changes. |
 
 Re-running `lex init` keeps your edits to fields other than `model` and `ollama_url`. `lex` keeps its own bookkeeping in `~/.local-executor/manifest.json` (what was installed where) and a 24-hour cache of the latest Ollama release tag; set `LEX_HOME` to move that directory.
@@ -312,6 +337,10 @@ Re-running `lex init` keeps your edits to fields other than `model` and `ollama_
 - **What the installer writes:** the skill directories listed under Configuration, a marker-delimited block in `~/.codex/AGENTS.md` (and a project `AGENTS.md` if you opt in), rule files under `.cursor/rules/` and `.windsurf/rules/` if you opt in, and `~/.local-executor/`. `lex uninstall` reverses exactly that list.
 - **Privileged commands are never run silently.** The Ollama install and upgrade commands are printed with an explanation and require a yes; in `--yes` mode they are skipped unless you pass `--allow-install`. Downloads over 100 MB are announced with their size.
 - **The executor cannot write outside the repo.** Paths returned by the model are checked against `--root`; absolute paths and `..` escapes are refused and reported. Existing files get a `.bak` before being overwritten.
+
+## Keeping the catalog current
+
+A weekly GitHub Action ([catalog-refresh.yml](.github/workflows/catalog-refresh.yml)) runs `lex models --refresh` against ollama.com, applies download-size drift to the catalog, bumps `lastVerified` when every tag still exists, pulls up to two small new tags on the CPU runner and pushes the "return 42" packet through them, and opens or updates a `chore(catalog)` pull request whose body lists vanished tags, new tags in known families, and the newest coding-capable families as a checklist. A human merges it. You can run it locally with `node scripts/catalog-bot.mjs --no-smoke`.
 
 ## Contributing / updating the model catalog
 

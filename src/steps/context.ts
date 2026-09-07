@@ -8,6 +8,8 @@ export interface InitOptions {
   yes: boolean;
   json: boolean;
   ollamaUrl: string;
+  ollamaToken?: string;
+  ollamaTokenEnv?: string;
   model?: string;
   agents?: AgentId[];
   skipOllama: boolean;

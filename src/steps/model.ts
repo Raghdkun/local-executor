@@ -28,7 +28,26 @@ export async function chooseModel(ctx: RunContext): Promise<string> {
     return ctx.opts.model;
   }
   const list = ctx.report?.list ?? [];
-  const top = list.find((r) => r.recommended)?.tag ?? "qwen3.5:9b";
+  let top = list.find((r) => r.recommended)?.tag ?? "qwen3.5:9b";
+  if (ctx.client.isRemote) {
+    // A shared box already has models; default to the largest pulled one that
+    // the catalog knows, otherwise the largest pulled model at all.
+    const remote = await ctx.client.list().catch(() => []);
+    if (remote.length > 0) {
+      const known = remote.filter((m) => findModel(m.name.replace(/:latest$/, "")));
+      const pick = (known.length ? known : remote).sort((a, b) => b.sizeBytes - a.sizeBytes)[0];
+      if (pick) {
+        top = pick.name.replace(/:latest$/, "");
+        log.info(
+          `Models pulled on ${ctx.client.baseUrl}: ${remote.map((m) => m.name).join(", ")}. Defaulting to ${top}.`,
+        );
+      }
+    } else {
+      log.warn(
+        `No models are pulled on ${ctx.client.baseUrl}; the pull below will happen on that box.`,
+      );
+    }
+  }
   if (log.nonInteractive()) return top;
   const picked = await log.select(
     "Executor model",

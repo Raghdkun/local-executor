@@ -24,6 +24,9 @@ This file is agent-neutral. The adapter that loaded it (Claude Code skill, Codex
 
 ## Step 0 — Make sure the executor exists
 
+The executor may be a **remote box** (a shared GPU machine on the LAN): `{{LEX_CONFIG}}` then has a non-localhost `ollama_url` and a bearer token (`ollama_token_env`). Everything below works the same; the scripts add the token to each request. `check_local.mjs` says `AUTH` when the token is missing or rejected.
+
+
 Run:
 
 ```
@@ -86,6 +89,12 @@ Write the packet to a file (for example `.lex/packet-1.md` inside the repo, or a
 node "{{LEX_RUNTIME}}/run_executor.mjs" --packet <packet.md> --out <response.md> [--apply --root <repo>]
 ```
 
+**Lint first.** The runner lints every packet against the template before sending (missing sections, files without their full existing code, no modern-practices block, placeholders left in, retries without numbered fixes, over budget) and refuses on errors. Run it yourself while writing:
+
+```
+node "{{LEX_RUNTIME}}/check_packet.mjs" <packet.md>
+```
+
 **Run it in the background** (it takes minutes; see Step 0) and poll or wait for it — never inside a tool call with a short timeout. Before the first run of a session, `--dry-run` prints the token budget and the time estimate without sending anything:
 
 ```
@@ -98,6 +107,14 @@ Exit codes: `0` ok · `2` Ollama/network error (the message names the cause) · 
 
 It also refuses to send a packet whose estimated prompt plus a full-file reply exceeds `num_ctx`, and warns above 85%. If you see that warning, split the packet or raise `num_ctx` in `{{LEX_CONFIG}}` (each 16k of context costs roughly 1–2 GB of memory on a 9B model).
 
+Every run gets a **run id** (printed at the end, and in `--json`) and is appended to `<root>/.lex/runs.jsonl`. **After you run the tests, record the result** so `lex stats` can compute first-attempt pass rates per model and packet size (this is how the fallback/default split gets tuned and how you know when to upgrade):
+
+```
+node "{{LEX_RUNTIME}}/record_result.mjs" --run <id> --tests pass|fail
+```
+
+Pass `--attempt N` to the runner on retries (it also infers it from the retry section).
+
 Default flow: run without `--apply`, read the output, then apply and run the test command from the packet yourself. If tests fail, decide whether the failure is a planning error (fix the packet) or an execution error (retry with a **numbered "fix exactly these" list** under `## Previous attempt failed`, see the template; raw test output alone tends to produce an unchanged file). Cap at **3 attempts per packet**.
 
 ## Step 4 — Audit (strong model, separate context)
@@ -109,13 +126,21 @@ Only once the tests pass. The auditor is **never the local model** and **never t
 - **Cursor / Windsurf**: they cannot spawn subagents. Open a fresh chat/composer, paste the audit prompt, and bring the verdict back. Tell the user you are doing this and why.
 - If none of the above is possible, do the audit yourself in a separate pass and say so; self-review is weaker.
 
-The auditor returns `ACCEPT` or `REJECT` with a numbered, severity-tagged list of issues. On `REJECT`, feed the issues back as a new executor attempt (counts toward the 3-attempt cap). On `ACCEPT`, apply the change (if not already applied) and move to the next packet.
+The auditor returns `ACCEPT` or `REJECT` with a numbered, severity-tagged list of issues. Record it: `node "{{LEX_RUNTIME}}/record_result.mjs" --run <id> --audit accept|reject --model <auditor model>`. On `REJECT`, feed the issues back as a new executor attempt (counts toward the 3-attempt cap). On `ACCEPT`, apply the change (if not already applied) and move to the next packet.
+
+**Turn "MISSING TESTS" into tests.** Save the auditor's reply to a file and run:
+
+```
+node "{{LEX_RUNTIME}}/add_test_stubs.mjs" --verdict .lex/audit-1.md --into <test file>
+```
+
+It appends one skipped/todo stub per missing case in the file's framework (node:test, vitest/jest, pytest, Go, Rust, Dart), marked `lex:missing-test` and deduplicated. Then either fill the stubs in yourself (usually a minute) or make them the next packet's tests. Coverage grows with every accepted packet.
 
 ## Step 5 — Escalate when the pipeline can't finish
 
 You take over the task yourself, and log one line saying why, when any of these happen:
 
-- 3 attempts on a packet without passing tests and audit.
+- 3 attempts on a packet without passing tests and audit. Record it: `record_result.mjs --run <id> --escalated "<why>"`.
 - The packet would exceed ~6,000 tokens of pasted code even after splitting.
 - The executor returns prose instead of code twice in a row, exits with code `4` (declared it cannot), or returns the file unchanged (exit `6`) after a retry with explicit numbered fixes.
 - The task needs tools (network, DB, browser) during implementation, not just during planning.
@@ -134,7 +159,10 @@ If the task is a one-line fix, a rename, or something you can do faster than wri
 
 - `{{LEX_CONFIG}}` — model name, Ollama URL, context size, timeouts
 - `{{LEX_RUNTIME}}/check_local.mjs` — is everything installed and running, and how long will a packet take? (`--bench` measures)
-- `{{LEX_RUNTIME}}/run_executor.mjs` — send a packet (streamed, locked, budget-checked), get code back, optionally apply (`--dry-run`, `--wait`, `--apply`)
+- `{{LEX_RUNTIME}}/run_executor.mjs` — send a packet (linted, streamed, locked, budget-checked), get code back, optionally apply (`--dry-run`, `--wait`, `--apply`, `--attempt N`)
+- `{{LEX_RUNTIME}}/check_packet.mjs` — lint a packet against the template and budget
+- `{{LEX_RUNTIME}}/record_result.mjs` — record test/audit/escalation outcomes for `lex stats`
+- `{{LEX_RUNTIME}}/add_test_stubs.mjs` — turn the auditor's MISSING TESTS into test stubs
 - `{{LEX_CORE}}/handoff-template.md` — exact packet format for the executor
 - `{{LEX_CORE}}/executor-system-prompt.md` — the system prompt the executor runs under
 - `{{LEX_CORE}}/modern-practices.md` — per-language conventions block to paste into packets

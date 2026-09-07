@@ -2,7 +2,6 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-// @ts-expect-error — untyped .mjs module
 import { benchmarkPrompt, estimateFromBenchmark } from "../skill/runtime/check_local.mjs";
 // The runtime is plain ESM JavaScript shipped inside skill/; import its pure helpers directly.
 import {
@@ -18,7 +17,6 @@ import {
   releaseLock,
   safeTarget,
   stripThinking,
-  // @ts-expect-error — untyped .mjs module
 } from "../skill/runtime/run_executor.mjs";
 
 describe("run_executor: parsing", () => {

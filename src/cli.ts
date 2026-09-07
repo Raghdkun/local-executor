@@ -3,6 +3,8 @@ import { parseAgentList } from "./agents/types.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runInit } from "./commands/init.js";
 import { runModels } from "./commands/models.js";
+import { runPacketCheck } from "./commands/packet.js";
+import { runStats } from "./commands/stats.js";
 import { runSwitch } from "./commands/switch.js";
 import { runUninstall } from "./commands/uninstall.js";
 import { DEFAULT_OLLAMA_URL } from "./ollama/client.js";
@@ -29,6 +31,10 @@ Examples:
   $ lex models                         ranked catalog for this machine
   $ lex doctor                         diagnostics, non-zero exit on failure
   $ lex switch gemma4:e4b              pull + update every installed config
+  $ lex packet check .lex/packet-1.md  lint a packet before sending it
+  $ lex stats                          pass rates per model from .lex/runs.jsonl
+  $ lex init --ollama-url http://gpu-box:11434 --ollama-token-env LEX_OLLAMA_TOKEN --agents claude
+                                       use a shared GPU box as the executor
   $ lex uninstall --agents codex       remove what lex installed for Codex
 `,
   );
@@ -55,12 +61,22 @@ function initCommand(cmd: Command): Command {
       "in --yes mode, permit running the Ollama install/upgrade command",
       false,
     )
+    .option(
+      "--ollama-token-env <name>",
+      "env var holding a bearer token for a remote executor (recommended)",
+    )
+    .option(
+      "--ollama-token <token>",
+      "bearer token for a remote executor (written to config.json; prefer --ollama-token-env)",
+    )
     .addOption(ollamaUrlOption)
     .action(async (opts) => {
       const code = await runInit({
         yes: Boolean(opts.yes) || Boolean(opts.json),
         json: Boolean(opts.json),
         ollamaUrl: normalizeUrl(opts.ollamaUrl),
+        ...(opts.ollamaToken ? { ollamaToken: String(opts.ollamaToken) } : {}),
+        ...(opts.ollamaTokenEnv ? { ollamaTokenEnv: String(opts.ollamaTokenEnv) } : {}),
         model: opts.model,
         agents: opts.agents,
         skipOllama: Boolean(opts.skipOllama),
@@ -118,6 +134,36 @@ program
       yes: Boolean(opts.yes) || Boolean(opts.json),
       json: Boolean(opts.json),
       ollamaUrl: normalizeUrl(opts.ollamaUrl),
+    });
+  });
+
+program
+  .command("stats")
+  .description(
+    "first-attempt pass rate, audit accept rate, and speed per model and packet size from .lex/runs.jsonl",
+  )
+  .option("--json", "machine-readable output", false)
+  .option("--root <dir>", "repository root holding .lex/", ".")
+  .action(async (opts) => {
+    process.exitCode = await runStats({ json: Boolean(opts.json), root: String(opts.root) });
+  });
+
+const packet = program.command("packet").description("work with task packets");
+packet
+  .command("check <file>")
+  .description(
+    "lint a packet against the handoff template and the context budget; exit 1 on errors",
+  )
+  .option("--json", "machine-readable output", false)
+  .option(
+    "--num-ctx <n>",
+    "context window to check against (default: installed config)",
+    (v: string) => Number(v),
+  )
+  .action(async (file: string, opts) => {
+    process.exitCode = await runPacketCheck(file, {
+      json: Boolean(opts.json),
+      ...(opts.numCtx ? { numCtx: Number(opts.numCtx) } : {}),
     });
   });
 

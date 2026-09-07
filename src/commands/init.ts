@@ -55,6 +55,14 @@ export function summaryLines(ctx: RunContext): string[] {
   return lines;
 }
 
+export function resolveToken(
+  opts: Pick<InitOptions, "ollamaToken" | "ollamaTokenEnv">,
+): string | undefined {
+  if (opts.ollamaToken) return opts.ollamaToken;
+  if (opts.ollamaTokenEnv) return process.env[opts.ollamaTokenEnv];
+  return undefined;
+}
+
 export async function runInit(opts: InitOptions): Promise<number> {
   log.configureUi({ yes: opts.yes, json: opts.json });
   if (!log.ui.tty && !opts.yes && !opts.json) {
@@ -62,7 +70,7 @@ export async function runInit(opts: InitOptions): Promise<number> {
   }
   const ctx: RunContext = {
     opts,
-    client: new OllamaClient(opts.ollamaUrl),
+    client: new OllamaClient(opts.ollamaUrl, undefined, resolveToken(opts)),
     cwd: process.cwd(),
     ollama: { binary: null, version: null, latest: null, skipped: false },
     detections: [],

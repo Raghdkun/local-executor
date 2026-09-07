@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+/**
+ * Catalog bot (runs in .github/workflows/catalog-refresh.yml, weekly).
+ *
+ * 1. Runs `lex models --refresh --json` against ollama.com.
+ * 2. Applies size drift to src/models/catalog.ts and bumps lastVerified when
+ *    every catalog tag still exists.
+ * 3. Smoke-tests up to two new base tags that are small enough for a CPU
+ *    runner (<= SMOKE_MAX_GB) by pulling them and sending the "return 42"
+ *    packet through the shipped runtime.
+ * 4. Writes a Markdown report to $CATALOG_BOT_REPORT for the PR body and exits
+ *    0 when there is something to propose, 3 when there is nothing to do.
+ *
+ * Usage: node scripts/catalog-bot.mjs [--no-smoke] [--report <file>]
+ */
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
+const exec = promisify(execFile);
+const SMOKE_MAX_GB = 4;
+const SMOKE_MAX = 2;
+
+const argv = process.argv.slice(2);
+const noSmoke = argv.includes("--no-smoke");
+const reportFile = argv.includes("--report") ? argv[argv.indexOf("--report") + 1] : process.env.CATALOG_BOT_REPORT ?? "catalog-bot-report.md";
+
+const { stdout } = await exec(process.execPath, ["dist/cli.js", "models", "--refresh", "--json"], { maxBuffer: 10_000_000 });
+const report = JSON.parse(stdout);
+
+let catalog = await readFile("src/models/catalog.ts", "utf8");
+const original = catalog;
+const lines = [];
+lines.push(`Automated check of ollama.com on ${report.checkedAt.slice(0, 10)} (catalog last verified ${report.lastVerified}).`, "");
+
+const missing = report.families.flatMap((f) => f.missing.map((t) => `${f.family}: ${t}`));
+if (missing.length) {
+  lines.push("### Catalog tags that no longer exist on ollama.com (needs a human)", ...missing.map((m) => `- [ ] ${m}`), "");
+}
+
+const drift = report.families.flatMap((f) => f.sizeChanged);
+if (drift.length) {
+  lines.push("### Download sizes updated automatically");
+  for (const d of drift) {
+    const re = new RegExp(`(tag: "${d.tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}",[\\s\\S]*?sizeGB: )${d.catalogGB}`);
+    if (re.test(catalog)) {
+      catalog = catalog.replace(re, `$1${d.remoteGB}`);
+      lines.push(`- ${d.tag}: ${d.catalogGB} GB → ${d.remoteGB} GB`);
+    }
+  }
+  lines.push("");
+}
+
+const newTags = report.families.flatMap((f) => f.newTags.map((t) => ({ family: f.family, ...t })));
+if (newTags.length) {
+  lines.push("### New tags in catalog families (consider adding)", ...newTags.map((t) => `- [ ] \`${t.tag}\`${t.sizeGB ? ` ~${t.sizeGB} GB` : ""}${t.contextK ? `, ${t.contextK}K context` : ""}${t.updated ? `, ${t.updated}` : ""}`), "");
+}
+if (report.newFamilies.length) {
+  lines.push("### Newest coding-capable families not in the catalog", ...report.newFamilies.map((n) => `- [ ] ${n} — https://ollama.com/library/${n}`), "");
+}
+
+// Smoke test small new tags on the CPU runner.
+if (!noSmoke) {
+  const candidates = newTags.filter((t) => t.sizeGB !== null && t.sizeGB <= SMOKE_MAX_GB).slice(0, SMOKE_MAX);
+  if (candidates.length) {
+    lines.push(`### Smoke test (CPU runner, "return 42" packet)`);
+    for (const c of candidates) {
+      const r = await smoke(c.tag).catch((err) => ({ ok: false, detail: err.message }));
+      lines.push(`- ${r.ok ? "✅" : "❌"} \`${c.tag}\`: ${r.detail}`);
+    }
+    lines.push("");
+  }
+}
+
+if (missing.length === 0 && report.errors.length === 0) {
+  catalog = catalog.replace(/export const lastVerified = "\d{4}-\d{2}-\d{2}";/, `export const lastVerified = "${report.checkedAt.slice(0, 10)}";`);
+}
+if (report.errors.length) lines.push("### Errors", ...report.errors.map((e) => `- ${e}`), "");
+
+const changed = catalog !== original;
+if (changed) await writeFile("src/models/catalog.ts", catalog);
+await writeFile(reportFile, lines.join("\n"));
+console.log(lines.join("\n"));
+process.exit(changed || missing.length || newTags.length || report.newFamilies.length ? 0 : 3);
+
+async function smoke(tag) {
+  const work = await mkdtemp(join(tmpdir(), "lex-smoke-"));
+  await exec("ollama", ["pull", tag], { maxBuffer: 50_000_000, timeout: 20 * 60_000 });
+  const runtime = join(work, "runtime");
+  await exec("cp", ["-R", "skill/runtime", runtime]);
+  await exec("cp", ["-R", "skill/core", join(work, "core")]);
+  const cfg = JSON.parse(await readFile(join(runtime, "config.json"), "utf8"));
+  cfg.model = tag;
+  cfg.timeout_seconds = 900;
+  await writeFile(join(runtime, "config.json"), JSON.stringify(cfg));
+  const test = `import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { fortyTwo } from "./answer.mjs";\ntest("fortyTwo returns 42", () => { assert.equal(fortyTwo(), 42); });\n`;
+  const packet = `# Task: Return 42\n\n## Goal (required)\nCreate \`answer.mjs\` exporting a function \`fortyTwo\` that returns the number 42.\n\n## Files you may change (required)\n- answer.mjs — create this file\n\nYou may NOT change any other file.\n\n## Conventions (required)\n- Language/version: JavaScript, Node.js 20, ESM\n- Style: named export, no console output\n- Allowed dependencies: none\n- Modern practices:\n  - ESM \`export\`, never CommonJS\n  - \`const\` only, no \`var\`\n\n## Existing code\nanswer.mjs does not exist yet.\n\n## Tests that must pass (required)\nCommand: \`node --test answer.test.mjs\`\n\n### answer.test.mjs\n\`\`\`js\n${test}\`\`\`\n\n## Do NOT\n- Do not modify answer.test.mjs\n- Do not create any file other than answer.mjs\n`;
+  await writeFile(join(work, "packet.md"), packet);
+  await writeFile(join(work, "answer.test.mjs"), test);
+  const started = Date.now();
+  await exec(process.execPath, [join(runtime, "run_executor.mjs"), "--packet", join(work, "packet.md"), "--out", join(work, "response.md"), "--apply", "--root", work, "--json"], { timeout: 15 * 60_000 });
+  await exec(process.execPath, ["--test", "answer.test.mjs"], { cwd: work });
+  return { ok: true, detail: `passed in ${Math.round((Date.now() - started) / 1000)} s` };
+}

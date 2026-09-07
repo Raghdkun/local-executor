@@ -56,6 +56,10 @@ export interface RuntimeConfig {
   think: boolean;
   /** Measured speed for `model`; dropped automatically when the model changes. */
   benchmark?: Benchmark;
+  /** Bearer token for a remote executor (written only when given as a literal). */
+  ollama_token?: string;
+  /** Name of the environment variable holding the bearer token (preferred). */
+  ollama_token_env?: string;
 }
 
 export const defaultRuntimeConfig: RuntimeConfig = {
@@ -86,6 +90,9 @@ export interface InstallInput {
   fallbackModel?: string;
   /** Repo root for project-scope installs; gets a `.lex/.gitignore`. */
   projectRoot?: string | null;
+  /** Remote executor auth: literal token or env var name. */
+  ollamaToken?: string;
+  ollamaTokenEnv?: string;
 }
 
 export interface InstallOutcome {
@@ -140,6 +147,13 @@ export async function installTarget(input: InstallInput): Promise<InstallOutcome
       model,
       ollama_url: input.ollamaUrl,
     };
+    if (input.ollamaTokenEnv) {
+      merged.ollama_token_env = input.ollamaTokenEnv;
+      delete merged.ollama_token;
+    } else if (input.ollamaToken) {
+      merged.ollama_token = input.ollamaToken;
+      delete merged.ollama_token_env;
+    }
     if (input.benchmark && input.benchmark.model === model) merged.benchmark = input.benchmark;
     else if (merged.benchmark && merged.benchmark.model !== model) delete merged.benchmark;
     await writeJson(configPath, merged);

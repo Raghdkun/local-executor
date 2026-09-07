@@ -1,0 +1,56 @@
+name: Catalog refresh
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      smoke:
+        description: "Pull and smoke-test small new tags on the runner (slow)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install Ollama for smoke tests
+        if: ${{ github.event_name == 'schedule' || inputs.smoke }}
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve >/tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/version && break; sleep 1; done
+      - name: Check ollama.com and prepare proposal
+        id: bot
+        env:
+          CATALOG_BOT_REPORT: ${{ runner.temp }}/report.md
+        run: |
+          set +e
+          if [ "${{ github.event_name == 'schedule' || inputs.smoke }}" = "true" ]; then node scripts/catalog-bot.mjs; else node scripts/catalog-bot.mjs --no-smoke; fi
+          code=$?
+          set -e
+          if [ "$code" = "3" ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; elif [ "$code" = "0" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else exit $code; fi
+      - name: Verify catalog still passes tests
+        if: steps.bot.outputs.changed == 'true'
+        run: npm test
+      - name: Open or update the proposal PR
+        if: steps.bot.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/catalog-refresh
+          title: "chore(catalog): weekly ollama.com refresh"
+          commit-message: "chore(catalog): refresh sizes and lastVerified from ollama.com"
+          body-path: ${{ runner.temp }}/report.md
+          labels: catalog
+          delete-branch: true

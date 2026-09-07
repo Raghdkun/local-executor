@@ -119,6 +119,24 @@ export async function stepOllama(ctx: RunContext): Promise<void> {
     "The local server that runs the executor model. Detect, install, start, and check the version.",
   );
 
+  if (ctx.client.isRemote) {
+    ctx.ollama.skipped = true;
+    ctx.ollama.version = await ctx.client.version();
+    if (ctx.ollama.version) {
+      log.success(
+        `Remote executor: Ollama ${ctx.ollama.version} at ${ctx.client.baseUrl}${ctx.client.token ? " (bearer token)" : ""}. Nothing is installed or started locally.`,
+      );
+    } else {
+      log.error(
+        `Remote executor at ${ctx.client.baseUrl} is not reachable. Check the URL, the network (VPN/Tailscale), and the token.`,
+      );
+      ctx.warnings.push(
+        `Remote Ollama at ${ctx.client.baseUrl} unreachable; config was still written.`,
+      );
+    }
+    return;
+  }
+
   if (ctx.opts.skipOllama) {
     ctx.ollama.skipped = true;
     log.warn(
