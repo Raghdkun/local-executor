@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type DetectAgentDeps, detectAgents } from "../../src/agents/detect.js";
 
@@ -23,7 +24,7 @@ describe("detectAgents", () => {
     const r = await detectAgents(
       deps({
         which: async (c) => (c === "claude" ? "/usr/local/bin/claude" : null),
-        exists: async (p) => p === "/Users/x/.codex",
+        exists: async (p) => p === join("/Users/x", ".codex"),
       }),
     );
     const byId = Object.fromEntries(r.map((a) => [a.id, a]));

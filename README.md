@@ -47,13 +47,15 @@ You will be walked through six steps. Each has a header, a one-line explanation,
 A non-interactive run on a 16 GB M4 MacBook looks like this (full transcript in [docs/EXAMPLE_RUN.md](docs/EXAMPLE_RUN.md)):
 
 ```text
-$ npx local-executor --yes --skip-pull
+$ npx local-executor --yes
 ◇  1/6 Ollama
 │  The local server that runs the executor model. Detect, install, start, and check the version.
 │
 ◆  Ollama 0.33.3 is running at http://localhost:11434.
 │
 ●  Ollama is up to date (latest release: v0.33.3).
+│
+●  Model store will be created at ~/.ollama/models on first pull.
 │
 ◇  2/6 Hardware
 │  What this machine can run. Effective memory decides the model tier.
@@ -62,9 +64,9 @@ Hardware detected.
 │
 │  OS         darwin (arm64)
 │  CPU        Apple M4, 10 cores (10 threads)
-│  RAM        16 GB total, 5.9 GB free
+│  RAM        16 GB total, 1.9 GB free
 │  GPU        Apple Silicon (unified memory)
-│  Free disk  22.7 GB on the volume holding ~/.ollama/models
+│  Free disk  17.4 GB on the volume holding ~/.ollama/models
 │
 ●  Effective memory for models: 11.2 GB (Apple Silicon: 70% of 16 GB unified memory) → tier 10–14 GB
 │
@@ -73,7 +75,9 @@ Hardware detected.
 ◇  3/6 Model
 │  Pick the executor model, pull it, and measure real tokens/sec on this machine.
 │
-▲  --skip-pull: not pulling qwen3.5:9b. Run: ollama pull qwen3.5:9b
+◆  qwen3.5:9b is already pulled.
+Loading qwen3.5:9b and measuring speed (first load can take 10–30 s)…
+qwen3.5:9b ready: 17.4 tok/s (load 4 s, 64 tokens generated)
 │
 ◇  4/6 Agents
 │  Which AI coding agents should learn the pipeline. Detected ones are preselected.
@@ -99,31 +103,23 @@ Hardware detected.
 │
 │    Created ~/.codex/local-executor
 │
-│    Wrote ~/.codex/skills/local-executor-pipeline/SKILL.md
-│
 │    Appended lex block in ~/.codex/AGENTS.md
 │
 ●  Install manifest: ~/.local-executor/manifest.json
 │
 ◇  6/6 Verify
 │  Run the installed check script and push one tiny real packet through the executor.
-Checking ~/.claude/skills/local-executor-pipeline…
-~/.claude/skills/local-executor-pipeline: MISSING MODEL — qwen3.5:9b not pulled. Run: ollama pull qwen3.5:9b
-Checking ~/.codex/local-executor…
-~/.codex/local-executor: MISSING MODEL — qwen3.5:9b not pulled. Run: ollama pull qwen3.5:9b
+~/.claude/skills/local-executor-pipeline: READY · packet pass
+~/.codex/local-executor: READY · packet pass
 │ ╭─Summary────────────────────────────────────────────────────────────────────╮
 │ │  Ollama    v0.33.3 at http://localhost:11434                               │
-│ │  Model     qwen3.5:9b — not pulled                                         │
+│ │  Model     qwen3.5:9b — 17.4 tok/s                                         │
 │ │  Claude Code user → ~/.claude/skills/local-executor-pipeline               │
 │ │  Codex CLI user → ~/.codex/AGENTS.md                                       │
-│ │  Verify    not run (2 skipped: missing model)                              │
+│ │  Verify    2/2 install(s) passed the end-to-end packet                     │
 │ ╰────────────────────────────────────────────────────────────────────────────╯
 │
-▲  Model qwen3.5:9b not pulled (--skip-pull).
-│
 ```
-
-(Model pull skipped in this recording with `--skip-pull`; with the model present, step 6 ends in `READY · packet pass` and the summary shows measured tokens/sec.)
 
 ## Which model will I get?
 
@@ -292,7 +288,7 @@ The catalog is a data file: [`src/models/catalog.ts`](src/models/catalog.ts). To
 4. Update `lastVerified` to today's date. It is printed by `lex models` and written into every generated `models.md`.
 5. `npm test`.
 
-Commits follow Conventional Commits; release-please turns them into versions and a changelog. CI runs lint, typecheck, tests, and build on macOS, Linux, and Windows with Node 20 and 22, plus an isolated `init`/`uninstall` against a throwaway home directory.
+Commits follow Conventional Commits; release-please opens a release PR, and merging it tags a release and publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token secret; the package's npmjs.com settings name this repo and `release.yml` as the trusted publisher). CI runs lint, typecheck, tests, and build on macOS, Linux, and Windows with Node 20 and 22, plus an isolated `init`/`uninstall` against a throwaway home directory.
 
 Dependencies, and why each one is here: `@clack/prompts` (the interactive UI), `commander` (argument parsing), `systeminformation` (CPU/RAM/GPU/disk on all three OSes), `picocolors` (colors, tiny), `execa` (every process we spawn, no shell strings). Dev: `tsup`, `vitest`, `@biomejs/biome`, `typescript`.
 

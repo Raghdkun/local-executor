@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   classifyGpu,
@@ -40,7 +41,7 @@ describe("detectHardware", () => {
       totalRamGB: 16,
       freeRamGB: 6,
       gpu: { kind: "apple", vramGB: null },
-      modelsDir: "/Users/x/.ollama/models",
+      modelsDir: join("/Users/x", ".ollama", "models"),
     });
     // "/" is the only mount that prefixes /Users/x/... in this fixture.
     expect(hw.freeDiskGB).toBe(30);

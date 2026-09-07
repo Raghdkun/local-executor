@@ -1,13 +1,13 @@
 # Example run
 
-A real, unedited run of `local-executor` on the machine it was developed on: a 16 GB Apple M4 MacBook, macOS, Node 24, Ollama 0.33.3 already installed and running, Claude Code and Codex CLI present, Cursor and Windsurf absent. Recorded on 2026-09-06 with stdout piped to a file, which is why prompts are auto-answered (non-TTY runs behave like `--yes`) and spinners print as plain lines. ANSI colors were stripped and the home directory replaced with `~`.
+A real, unedited run of the published package on the machine it was developed on: a 16 GB Apple M4 MacBook, macOS, Node 24, Ollama 0.33.3 running with `qwen3.5:9b` already pulled, Claude Code and Codex CLI present, Cursor and Windsurf absent. Recorded on 2026-09-07 with stdout piped to a file, which is why prompts are auto-answered (non-TTY runs behave like `--yes`) and spinners print as plain lines. It was run against a throwaway `HOME` so the author's real install stayed untouched; that path is shown as `~`. ANSI colors were stripped.
 
-The model pull was skipped with `--skip-pull` at the author's request (the 6.6 GB download was running at about 2 MB/s on this connection). Because the model is absent, step 6 reports `MISSING MODEL` and the end-to-end packet is skipped rather than failed; `lex doctor` shows the same two failing checks with the exact command that fixes them. A run with the model present ends with `READY · packet pass` and a measured tokens/sec figure in the summary.
+The model was already present, so step 3 skips the download and goes straight to the warm-up measurement. Step 6 sends the "return 42" packet through the executor once per installed runtime and runs the test with `node --test`.
 
-## `npx . --yes --skip-pull`
+## `npx local-executor@0.1.0 init --yes`
 
 ```text
-$ npx . --yes --skip-pull
+$ npx -y local-executor@0.1.0 init --yes
 ┌   local-executor v0.1.0 
 │
 │  Planner (your cloud agent) → Executor (local model via Ollama) → Auditor (strong model, fresh context).
@@ -19,6 +19,8 @@ $ npx . --yes --skip-pull
 │
 ●  Ollama is up to date (latest release: v0.33.3).
 │
+●  Model store will be created at ~/.ollama/models on first pull.
+│
 ◇  2/6 Hardware
 │  What this machine can run. Effective memory decides the model tier.
 Detecting CPU, memory, GPU, and disk…
@@ -26,9 +28,9 @@ Hardware detected.
 │
 │  OS         darwin (arm64)
 │  CPU        Apple M4, 10 cores (10 threads)
-│  RAM        16 GB total, 5.9 GB free
+│  RAM        16 GB total, 1.9 GB free
 │  GPU        Apple Silicon (unified memory)
-│  Free disk  22.7 GB on the volume holding ~/.ollama/models
+│  Free disk  17.4 GB on the volume holding ~/.ollama/models
 │
 ●  Effective memory for models: 11.2 GB (Apple Silicon: 70% of 16 GB unified memory) → tier 10–14 GB
 │
@@ -37,7 +39,9 @@ Hardware detected.
 ◇  3/6 Model
 │  Pick the executor model, pull it, and measure real tokens/sec on this machine.
 │
-▲  --skip-pull: not pulling qwen3.5:9b. Run: ollama pull qwen3.5:9b
+◆  qwen3.5:9b is already pulled.
+Loading qwen3.5:9b and measuring speed (first load can take 10–30 s)…
+qwen3.5:9b ready: 17.4 tok/s (load 4 s, 64 tokens generated)
 │
 ◇  4/6 Agents
 │  Which AI coding agents should learn the pipeline. Detected ones are preselected.
@@ -63,8 +67,6 @@ Hardware detected.
 │
 │    Created ~/.codex/local-executor
 │
-│    Wrote ~/.codex/skills/local-executor-pipeline/SKILL.md
-│
 │    Appended lex block in ~/.codex/AGENTS.md
 │
 ●  Install manifest: ~/.local-executor/manifest.json
@@ -72,18 +74,17 @@ Hardware detected.
 ◇  6/6 Verify
 │  Run the installed check script and push one tiny real packet through the executor.
 Checking ~/.claude/skills/local-executor-pipeline…
-~/.claude/skills/local-executor-pipeline: MISSING MODEL — qwen3.5:9b not pulled. Run: ollama pull qwen3.5:9b
+  Sending the "return 42" packet through ~/.claude/skills/local-executor-pipeline…
+~/.claude/skills/local-executor-pipeline: READY · packet pass
 Checking ~/.codex/local-executor…
-~/.codex/local-executor: MISSING MODEL — qwen3.5:9b not pulled. Run: ollama pull qwen3.5:9b
+~/.codex/local-executor: READY · packet pass
 │ ╭─Summary────────────────────────────────────────────────────────────────────╮
 │ │  Ollama    v0.33.3 at http://localhost:11434                               │
-│ │  Model     qwen3.5:9b — not pulled                                         │
+│ │  Model     qwen3.5:9b — 17.4 tok/s                                         │
 │ │  Claude Code user → ~/.claude/skills/local-executor-pipeline               │
 │ │  Codex CLI user → ~/.codex/AGENTS.md                                       │
-│ │  Verify    not run (2 skipped: missing model)                              │
+│ │  Verify    2/2 install(s) passed the end-to-end packet                     │
 │ ╰────────────────────────────────────────────────────────────────────────────╯
-│
-▲  Model qwen3.5:9b not pulled (--skip-pull).
 │
 ◇  How to start ──────────────────────────────────────────────────────────╮
 │                                                                         │
@@ -97,7 +98,7 @@ Checking ~/.codex/local-executor…
 exit=0
 ```
 
-## `lex doctor` afterwards
+## `lex doctor` on the real install
 
 ```text
 $ lex doctor
@@ -108,15 +109,15 @@ $ lex doctor
 │  ollama version      ok    up to date (v0.33.3)
 │  install manifest    ok    2 install(s) in ~/.local-executor/manifest.json
 │  claude/user files   ok    ~/.claude/skills/local-executor-pipeline
-│  claude/user model   FAIL  qwen3.5:9b not pulled — run: ollama pull qwen3.5:9b
+│  claude/user model   ok    qwen3.5:9b pulled
 │  codex/user files    ok    ~/.codex/local-executor
-│  codex/user model    FAIL  qwen3.5:9b not pulled — run: ollama pull qwen3.5:9b
+│  codex/user model    ok    qwen3.5:9b pulled
 │  codex/user adapter  ok    ~/.codex/skills/local-executor-pipeline
 │  codex/user block    ok    ~/.codex/AGENTS.md
 │
-└  2 check(s) failed.
+└  All checks passed.
 
-exit=1
+exit=0
 ```
 
 ## `lex models`
@@ -127,9 +128,9 @@ $ lex models
 │
 │  OS         darwin (arm64)
 │  CPU        Apple M4, 10 cores (10 threads)
-│  RAM        16 GB total, 6 GB free
+│  RAM        16 GB total, 1.6 GB free
 │  GPU        Apple Silicon (unified memory)
-│  Free disk  22.7 GB on the volume holding ~/.ollama/models
+│  Free disk  16.4 GB on the volume holding ~/.ollama/models
 │
 ●  Effective memory: 11.2 GB (Apple Silicon: 70% of 16 GB unified memory) → tier 10–14 GB
 │
@@ -142,34 +143,4 @@ $ lex models
 │    qwen3.5:2b      ~ 2.7 GB  Smallest usable executor; keep packets short and single-file.
 │
 └  Catalog last verified against ollama.com on 2026-09-06. Nothing was installed. Use --all to include models that do not fit.
-```
-
-## `lex uninstall --yes` (run before the transcript above, to start from a clean machine)
-
-```text
-$ lex uninstall --yes
-┌   lex uninstall 
-│
-◇  This will ──────────────────────────────────────────╮
-│                                                      │
-│  Claude Code (user)                                  │
-│    delete  ~/.claude/skills/local-executor-pipeline  │
-│  Codex CLI (user)                                    │
-│    delete  ~/.codex/local-executor                   │
-│    delete  ~/.codex/skills/local-executor-pipeline   │
-│    unmark  ~/.codex/AGENTS.md (block only)           │
-│                                                      │
-├──────────────────────────────────────────────────────╯
-│
-◆  Removed ~/.claude/skills/local-executor-pipeline
-│
-◆  Removed ~/.codex/local-executor
-│
-◆  Removed ~/.codex/skills/local-executor-pipeline
-│
-◆  Removed lex block from ~/.codex/AGENTS.md
-│
-└  Removed 2 install(s). Ollama and pulled models were left alone.
-
-exit=0
 ```
