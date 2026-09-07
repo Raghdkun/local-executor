@@ -14,7 +14,8 @@ Windsurf-specific notes:
   `node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --dry-run`
   `node "{{LEX_RUNTIME}}/run_executor.mjs" --packet .lex/packet-1.md --out .lex/response-1.md`
   The executor takes minutes per packet; run it in a terminal you can leave open, one packet at a time (exit 5 means one is already running). The runner creates `.lex/.gitignore` so packets and backups stay out of git.
+- Model choice (Step 0b): plan in a chat set to the newest frontier model in the model picker (not "auto" or a "fast" tier); pick the executor per packet with `--model <tag>` from the `available` list in `check_local.mjs --json`.
 - Inventory (Step 1): other rules in `.windsurf/rules/`, workflows in `.windsurf/workflows/`, and MCP servers configured in Windsurf. Use a docs MCP to get exact API facts into the packet.
-- Audit (Step 4): Cascade cannot spawn a subagent. Tell the user: "Starting a new conversation for the audit so the reviewer has not seen my planning." Then open a **new Cascade conversation** with the strongest available model, paste `{{LEX_CORE}}/audit-prompt.md` with PACKET, DIFF, and TEST_OUTPUT filled in, and bring the `VERDICT` back here. Do not audit in this conversation unless the user declines; if so, say self-review is weaker.
+- Audit (Step 4): Cascade cannot spawn a subagent. Tell the user: "Starting a new conversation for the audit so the reviewer has not seen my planning." Then open a **new Cascade conversation** set to the newest frontier model in the picker (not "auto"), paste `{{LEX_CORE}}/audit-prompt.md` with PACKET, DIFF, and TEST_OUTPUT filled in, and bring the `VERDICT` back here. Do not audit in this conversation unless the user declines; if so, say self-review is weaker.
 - Escalate per Step 5 and say why in one line.
 - Config: `{{LEX_CONFIG}}`. Change the model with `lex switch <tag>`, not by editing rules.

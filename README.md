@@ -143,17 +143,17 @@ The decision is driven by **effective memory**: the memory a model can realistic
 |---|---|---|---|
 | under 6 GB | `qwen3.5:2b` (2.7 GB) | `gemma4:e2b` | Very tight; short packets only |
 | 6–10 GB | `qwen3.5:4b` (3.4 GB) | `gemma4:e4b` | Light and fast; good for small tasks |
-| 10–14 GB (16 GB Mac) | `qwen3.5:9b` (6.6 GB) | `gemma4:e4b`, `qwen3.5:4b` | Best code quality that fits |
+| 10–14 GB (16 GB Mac) | `qwen3.5:9b` (6.6 GB) | `granite4.2:8b`, `gemma4:e4b`, `qwen3.5:4b` | Best code quality that fits |
 | 14–22 GB (24 GB Mac, 16 GB VRAM PC) | `qwen3.5:9b` | `gemma4:e4b`, `qwen3.5:9b-mlx` (Apple) | 9B at Q4 fits with headroom |
-| 22–30 GB (32 GB Mac) | `gemma4:26b` (19 GB) | `qwen3.5:9b`, `devstral` | MoE 26B fits; strong coding |
-| 30–48 GB | `qwen3.6:35b-a3b` (23 GB) | `gemma4:26b`, `gemma4:31b` | Frontier-adjacent local coding |
+| 22–30 GB (32 GB Mac) | `qwen3.8:27b` (18 GB) | `gemma4:26b`, `qwen3.5:9b`, `devstral` | Newest 27B dense fits; strong coding |
+| 30–48 GB | `qwen3.6:35b-a3b` (23 GB) | `qwen3.8:27b`, `gemma4:26b`, `gemma4:31b` | Frontier-adjacent local coding |
 | 48 GB and up | `qwen3.6:35b-a3b` | `gemma4:31b`, `qwen3.6:35b-a3b-coding`, `qwen3.6:27b-coding` | Room for big context |
 
 Sizes are approximate download sizes from ollama.com. The recommended tag must also fit on disk with a 1.5× margin; if it does not, `lex` steps down and says so.
 
 **Why a 26B mixture-of-experts model does not fit on 16 GB even though only 4B parameters are "active":** active parameters describe how much compute each token needs, which is why MoE models are fast. Memory is decided by total parameters, because the router can pick any expert for the next token and they all have to be resident. Gemma 4 26B is a 19 GB download and needs all of it in memory.
 
-`lex models` prints this table ranked for your machine without installing anything. The catalog lives in [`src/models/catalog.ts`](src/models/catalog.ts) and records when its tags were last checked against ollama.com.
+`lex models` prints this table ranked for your machine without installing anything. `lex models --refresh` goes to ollama.com and reports catalog tags that vanished, sizes that drifted, newer tags in the catalog families, and the newest coding-capable families the catalog does not know yet; the skill tells agents to run it when the last check is more than two weeks old, so the recommendation keeps pointing at current models between releases of this tool. The catalog lives in [`src/models/catalog.ts`](src/models/catalog.ts) and records when its tags were last checked against ollama.com.
 
 ## Using it from each agent
 
@@ -192,6 +192,8 @@ A project rule at `.windsurf/rules/local-executor.md` pointing at `~/.codeium/wi
 The full rules are in [`skill/core/PIPELINE.md`](skill/core/PIPELINE.md); this is the shape.
 
 **Task packets.** The executor sees one Markdown document and nothing else: Goal, Files you may change, Conventions (including a mandatory *modern practices* block for the language, from [`modern-practices.md`](skill/core/modern-practices.md)), the existing code pasted verbatim, the tests pasted verbatim with the exact command that must pass, and a concrete *Do NOT* list. Format in [`handoff-template.md`](skill/core/handoff-template.md).
+
+**The agent chooses the models.** Before planning, the skill has the agent decide three things: plan on the strongest, newest model its environment offers (and say so if it is running as a "fast" tier); audit on the newest frontier model in a fresh context (Claude Code's `model: "opus"` alias, Codex's newest reasoning model at high effort, the newest model in Cursor's or Windsurf's picker, never "auto"); and pick the executor **per packet** with `--model`: the smaller `fallback_model` for mechanical work, the installed default for standard packets, the largest pulled model that fits for hard logic. Nothing is pulled without asking, and the final report says which model did what. `lex models --refresh` keeps the local side current (below).
 
 **Tests first.** The planner writes the tests and puts them in the repo before the executor sees anything. This is the single biggest lever on quality: a small model cannot argue with a failing test. Test files may be excerpted in the packet (the executor never edits them); files the executor will change must be pasted in full, because it returns whole files.
 
@@ -235,6 +237,7 @@ The full rules are in [`skill/core/PIPELINE.md`](skill/core/PIPELINE.md); this i
 | `--allow-install` | init | In `--yes` mode, permit running the Ollama install or upgrade command. Without it, `--yes` prints the command and moves on. |
 | `--ollama-url <url>` | init, doctor, switch | Ollama server; also read from `OLLAMA_HOST`. |
 | `--all` | models | Include models that do not fit in memory. |
+| `--refresh` | models | Check ollama.com live for newer tags and families; prints a report, changes nothing. |
 | `-v, --version`, `-h, --help` | | |
 
 Exit codes: `0` ok, `1` usage or a failed `doctor` check, `2` Ollama unreachable when it was required, `3` verification failed, `130` cancelled.
@@ -270,7 +273,7 @@ Each install has its own `runtime/config.json`, read by the scripts next to it:
 |---|---|---|
 | `ollama_url` | `http://localhost:11434` | Where the server listens. |
 | `model` | chosen at install | Executor tag. Change with `lex switch <tag>`. |
-| `fallback_model` | `qwen3.5:4b` | Informational; a smaller tag to try if the main one is too slow. |
+| `fallback_model` | chosen at install (a smaller model in the same family) | Used by agents for mechanical packets via `--model`. Not pulled automatically; `check_local.mjs` says whether it is. |
 | `num_ctx` | `16384`, or `32768` on machines with 12 GB+ of headroom above the model file | Context window in tokens. The runner refuses packets that cannot fit and warns above 85%. Halve it before stepping down a model size if memory is tight. |
 | `temperature` | `0.1` | Low on purpose; executors should be boring. |
 | `keep_alive` | `"30m"` | How long Ollama keeps the model loaded after a request. |

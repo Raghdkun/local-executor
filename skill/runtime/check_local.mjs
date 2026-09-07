@@ -13,6 +13,7 @@
  * Exit 0 = ready. Exit 1 = something missing (message says what).
  */
 import { readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -140,19 +141,51 @@ async function main() {
     }
   }
 
+  // Has anyone checked ollama.com for newer models recently? (lex models --refresh)
+  let freshness =
+    "Newer-model check: never run — run `npx local-executor@latest models --refresh` (network, changes nothing).";
+  try {
+    const stamp = JSON.parse(
+      await readFile(
+        join(process.env.LEX_HOME ?? join(homedir(), ".local-executor"), "cache", "refresh.json"),
+        "utf8",
+      ),
+    );
+    const days = Math.floor((Date.now() - new Date(stamp.checkedAt).getTime()) / 86_400_000);
+    freshness =
+      days > 14
+        ? `Newer-model check: ${days} days ago (stale) — run \`npx local-executor@latest models --refresh\`.`
+        : `Newer-model check: ${days} days ago.`;
+  } catch {
+    // no stamp yet
+  }
+
   const eta = estimateFromBenchmark(benchmark);
   const estimate =
     eta === null
       ? "Time per packet: unmeasured — run `check_local.mjs --bench` once (30–90 s) to get an estimate."
       : `Expect about ${formatDuration(eta)} per typical packet (${TYPICAL_PACKET.promptTokens} tokens in, ${TYPICAL_PACKET.outputTokens} out) at ${benchmark.prompt_tps} prompt tok/s and ${benchmark.gen_tps} gen tok/s. Run packets in the background, one at a time.`;
+  const sizes = Object.fromEntries(
+    (tags.models ?? []).map((m) => [m.name, Math.round(((m.size ?? 0) / 1024 ** 3) * 10) / 10]),
+  );
+  const fallback =
+    config.fallback_model &&
+    (names.includes(config.fallback_model) || names.includes(`${config.fallback_model}:latest`))
+      ? config.fallback_model
+      : null;
+  const models = `Default model ${config.model}; fallback ${config.fallback_model ?? "none"}${fallback ? " (pulled)" : " (not pulled)"}; pulled: ${names.map((n) => `${n} (${sizes[n]} GB)`).join(", ")}.`;
   report(
     "READY",
-    `ollama running at ${config.ollama_url} with model ${config.model}. ${estimate}`,
+    `ollama running at ${config.ollama_url} with model ${config.model}. ${estimate} ${models} ${freshness}`,
     {
       model: config.model,
+      fallback_model: config.fallback_model ?? null,
+      fallback_pulled: fallback !== null,
       available: names,
+      sizesGB: sizes,
       benchmark,
       estimatedSecondsPerPacket: eta,
+      freshness,
     },
   );
   return 0;

@@ -38,7 +38,7 @@ describe("catalog", () => {
       "6–10 GB": "qwen3.5:4b",
       "10–14 GB": "qwen3.5:9b",
       "14–22 GB": "qwen3.5:9b",
-      "22–30 GB": "gemma4:26b",
+      "22–30 GB": "qwen3.8:27b",
       "30–48 GB": "qwen3.6:35b-a3b",
       "≥ 48 GB": "qwen3.6:35b-a3b",
     });

@@ -94,8 +94,17 @@ program
   .description("show the model catalog ranked for this machine (installs nothing)")
   .option("--json", "machine-readable output", false)
   .option("--all", "include models that do not fit in memory", false)
+  .option(
+    "--refresh",
+    "check ollama.com for newer tags/families and catalog drift (network)",
+    false,
+  )
   .action(async (opts) => {
-    process.exitCode = await runModels({ json: Boolean(opts.json), all: Boolean(opts.all) });
+    process.exitCode = await runModels({
+      json: Boolean(opts.json),
+      all: Boolean(opts.all),
+      refresh: Boolean(opts.refresh),
+    });
   });
 
 program

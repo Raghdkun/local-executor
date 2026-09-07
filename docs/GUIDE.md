@@ -67,6 +67,10 @@ Run `lex doctor`. Every line should say `ok`. Common results:
 
 You can also watch memory while a packet runs: Activity Monitor → Memory → "Memory Pressure" graph on macOS (green is fine, yellow means you're at the edge, red means swapping); Task Manager → Performance → GPU → "Dedicated GPU memory" on Windows.
 
+## Which model handles which packet
+
+The installed default is the largest model that fits comfortably. The agent is told to use a smaller `fallback_model` for mechanical packets (renames, boilerplate, data-only edits), because a 4B model answers in a third of the time and those tasks do not need more, and to use the largest pulled model that fits for tricky logic. `lex models --refresh` checks ollama.com for newer models so the agent can suggest an upgrade; nothing is downloaded until you say so.
+
 ## When to upgrade the model
 
 Upgrade when the executor's output is the bottleneck, not before. Signs:

@@ -34,6 +34,26 @@ It prints `READY`, `NOT RUNNING`, or `MISSING MODEL`, with the fix, and **how lo
 
 **Wall clock.** A 9B model on a laptop generates 10–20 tokens/s. A packet with 4k tokens in and a 2k-token file out takes **3–10 minutes**. Ollama serves one request at a time, so a second packet started while one is running just waits silently. Plan for it: run the executor in the background, one packet at a time, and do other planning work (write the next packet's tests) while it runs.
 
+## Step 0b — Choose the models (you decide, once per task, then per packet)
+
+You are the one who knows the task. Pick the models; do not just take the defaults.
+
+**Planner (you).** Plan and write tests on the strongest, newest model your agent offers. If you are running as a smaller or older model (a "fast"/"mini"/"haiku"-class tier) and the task is more than mechanical, say so in one line and suggest the user switch to the newest frontier model before continuing. Planning quality is the ceiling of the whole pipeline.
+
+**Auditor.** Always the newest strongest model available in your environment, in a fresh context. The adapter that loaded this file says how (Claude Code: Task tool with `model: "opus"`, which resolves to the latest Opus; Codex: `codex exec --model <newest reasoning model>`; Cursor/Windsurf: the newest frontier model in the picker for the audit chat, never "auto"). Never the local model, never a "fast" tier.
+
+**Executor (per packet).** `check_local.mjs --json` lists what is pulled (`available`) with the configured default (`model`) and a smaller `fallback_model`. Choose per packet:
+
+| Packet | Use |
+|---|---|
+| Mechanical: renames, boilerplate, data-only edits, filling a template, < ~150 lines returned | `fallback_model` if it is pulled (2–3× faster), else `model` |
+| Standard: implement a spec'd function or module against tests | `model` (the default the installer chose for this hardware) |
+| Hard: tricky control flow, concurrency, parsing, or a first attempt just failed on logic | the largest pulled model that fits this machine (`core/models.md` says what fits); if none is larger than `model`, keep `model` and write a tighter packet |
+
+Pass it with `--model <tag>`. Never pull a model without asking; downloads are gigabytes. Record which model each packet used in the final report.
+
+**Keep the choices current.** Local models improve monthly. If `check_local.mjs` says the newer-model check is stale (more than 14 days) or has never run, run `npx local-executor@latest models --refresh` (network; prints newer tags and families for this machine, changes nothing) and tell the user in one line if something newer fits; offer `lex switch <tag>`. The same rule applies to the cloud side: when your agent gains a newer frontier model, use it for planning and auditing without waiting for this skill to be updated.
+
 ## Step 1 — Inventory what you have (30 seconds, once per task)
 
 Before planning, list in one or two lines:
@@ -104,7 +124,7 @@ Example log line: `Escalating: 3 attempts on packet-2 (auth middleware); executo
 
 ## Step 6 — Report
 
-When all packets are done, tell the user in a few sentences: what was changed, how many executor attempts it took, what the auditor flagged, and anything you had to do by hand. Don't paste the full diff unless asked.
+When all packets are done, tell the user in a few sentences: what was changed, which executor model each packet used and how many attempts it took, which model audited, what the auditor flagged, and anything you had to do by hand. Don't paste the full diff unless asked.
 
 ## When to skip the pipeline
 

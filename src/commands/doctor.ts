@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { catalogAgeDays } from "../models/refresh.js";
 import { type Benchmark, estimateSecondsPerPacket, OllamaClient } from "../ollama/client.js";
 import { isOutdated, latestOllamaVersion, releaseCachePath } from "../ollama/release.js";
 import { which } from "../util/exec.js";
@@ -53,6 +54,18 @@ export async function collectDoctorChecks(ollamaUrl: string): Promise<DoctorChec
       });
     }
   }
+
+  const age = catalogAgeDays();
+  const stamp = await readJsonOr<{ checkedAt?: string }>(join(cacheDir(), "refresh.json"), {});
+  const sinceRefresh = stamp.checkedAt
+    ? Math.floor((Date.now() - new Date(stamp.checkedAt).getTime()) / 86_400_000)
+    : null;
+  checks.push({
+    name: "model catalog",
+    ok: age <= 60 || (sinceRefresh !== null && sinceRefresh <= 14),
+    warn: true,
+    detail: `verified ${age} days ago${sinceRefresh === null ? "; never checked live — run: lex models --refresh" : `; last live check ${sinceRefresh} days ago`}`,
+  });
 
   const manifest = await readManifest();
   checks.push({

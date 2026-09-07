@@ -26,6 +26,12 @@ One packet at a time: the runner exits 5 if another one is running (or queues wi
 - Skills: list `~/.claude/skills/` and `./.claude/skills/`; the ones already loaded in your context count too.
 - MCP tools: whatever `mcp__*` tools you see in your tool list. Prefer a docs MCP (e.g. context7) over guessing an API when writing the packet.
 
+## Model choice (Step 0b in PIPELINE.md)
+
+- Planner: you. If you are running as Haiku or a "fast" tier and the task is not mechanical, tell the user and suggest `/model` to the newest Opus/Fable-class model before planning.
+- Auditor: Task tool with `model: "opus"` — the alias resolves to the newest Opus, so this stays current as models ship. Use `subagent_type: "general-purpose"`.
+- Executor: `--model <tag>` on `run_executor.mjs`, chosen per packet from the `available` list in `check_local.mjs --json` using the table in PIPELINE.md.
+
 ## Audit step (Step 4 in PIPELINE.md)
 
 Spawn the auditor with the Task tool. It must be a **separate subagent** so its context contains only the audit prompt, the packet, the diff, and the test output:

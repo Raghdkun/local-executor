@@ -82,6 +82,8 @@ export interface InstallInput {
   benchmark?: Benchmark | null;
   /** Context window for fresh installs; an existing config keeps its own value. */
   numCtx?: number;
+  /** Smaller, faster model for mechanical packets; set on fresh installs only. */
+  fallbackModel?: string;
   /** Repo root for project-scope installs; gets a `.lex/.gitignore`. */
   projectRoot?: string | null;
 }
@@ -134,6 +136,7 @@ export async function installTarget(input: InstallInput): Promise<InstallOutcome
       ...shipped,
       ...existing,
       ...(fresh && input.numCtx ? { num_ctx: input.numCtx } : {}),
+      ...(fresh && input.fallbackModel ? { fallback_model: input.fallbackModel } : {}),
       model,
       ollama_url: input.ollamaUrl,
     };

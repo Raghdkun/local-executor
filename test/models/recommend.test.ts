@@ -57,8 +57,8 @@ describe("tierFor", () => {
     [13.9, "qwen3.5:9b"],
     [14, "qwen3.5:9b"],
     [21.9, "qwen3.5:9b"],
-    [22, "gemma4:26b"],
-    [29.9, "gemma4:26b"],
+    [22, "qwen3.8:27b"],
+    [29.9, "qwen3.8:27b"],
     [30, "qwen3.6:35b-a3b"],
     [47.9, "qwen3.6:35b-a3b"],
     [48, "qwen3.6:35b-a3b"],
@@ -84,7 +84,11 @@ describe("recommendModels", () => {
     const list = recommendModels(hw({ totalRamGB: 16 }));
     expect(list[0]?.tag).toBe("qwen3.5:9b");
     expect(list[0]?.reason).toBe("Best code quality that fits");
-    expect(list.slice(1, 3).map((r) => r.tag)).toEqual(["gemma4:e4b", "qwen3.5:4b"]);
+    expect(list.slice(1, 4).map((r) => r.tag)).toEqual([
+      "granite4.2:8b",
+      "gemma4:e4b",
+      "qwen3.5:4b",
+    ]);
   });
 
   it("24 GB Mac (16.8 GB effective) offers the MLX build", () => {
@@ -101,8 +105,8 @@ describe("recommendModels", () => {
     expect(list.map((r) => r.tag)).not.toContain("qwen3.5:9b-mlx");
   });
 
-  it("32 GB Mac → gemma4:26b", () => {
-    expect(recommendModels(hw({ totalRamGB: 32 }))[0]?.tag).toBe("gemma4:26b");
+  it("32 GB Mac → qwen3.8:27b (newest 27B that fits)", () => {
+    expect(recommendModels(hw({ totalRamGB: 32 }))[0]?.tag).toBe("qwen3.8:27b");
   });
 
   it("64 GB Mac → qwen3.6:35b-a3b", () => {
@@ -166,7 +170,7 @@ describe("recommendModels", () => {
     const list = recommendModels(hw({ totalRamGB: 32 })); // 22.4 GB effective
     const tags = list.map((r) => r.tag);
     expect(tags).not.toContain("qwen3.6:35b-a3b"); // 23 GB does not fit
-    const extra = list.filter((r) => r.rank > 2);
+    const extra = list.filter((r) => r.rank > 3);
     for (let i = 1; i < extra.length; i++) {
       expect(extra[i - 1]?.sizeGB).toBeGreaterThanOrEqual(extra[i]?.sizeGB ?? 0);
     }

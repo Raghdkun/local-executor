@@ -417,6 +417,30 @@ async function main() {
   else log(budget.message);
   log(etaLine);
 
+  // The requested model must be pulled; never pull implicitly.
+  try {
+    const res = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    const names = ((await res.json()).models ?? []).map((m) => m.name);
+    if (!names.includes(args.model) && !names.includes(`${args.model}:latest`)) {
+      log(
+        `MODEL NOT PULLED: ${args.model} is not on this machine (available: ${names.join(", ") || "none"}). Ask the user before pulling: ollama pull ${args.model}`,
+      );
+      if (args.json)
+        console.log(
+          JSON.stringify({
+            ok: false,
+            reason: "model_not_pulled",
+            model: args.model,
+            available: names,
+          }),
+        );
+      return 2;
+    }
+  } catch (err) {
+    log(describeFetchError(err, config));
+    return 2;
+  }
+
   // One executor per server.
   const lock = lockPath(config.ollama_url);
   const got = await acquireLock(lock, { wait: args.wait });

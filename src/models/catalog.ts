@@ -10,9 +10,9 @@
  * and the in-memory footprint grows with `num_ctx`).
  */
 
-export const lastVerified = "2026-09-06";
+export const lastVerified = "2026-09-07";
 
-export type ModelFamily = "qwen3.5" | "qwen3.6" | "gemma4" | "devstral";
+export type ModelFamily = "qwen3.5" | "qwen3.6" | "qwen3.8" | "gemma4" | "devstral" | "granite4.2";
 
 export interface CatalogModel {
   /** Exact Ollama tag, e.g. `qwen3.5:9b`. */
@@ -64,6 +64,22 @@ export const catalog: readonly CatalogModel[] = [
     notes: "Solid instruction following; heavier download than qwen3.5:4b.",
   },
   {
+    tag: "granite4.2:3b",
+    family: "granite4.2",
+    params: "3B dense (IBM, Apache-2.0)",
+    sizeGB: 2.2,
+    contextK: 128,
+    notes: "Very small and fast; a mechanical-packet fallback.",
+  },
+  {
+    tag: "granite4.2:8b",
+    family: "granite4.2",
+    params: "8B dense (IBM, Apache-2.0)",
+    sizeGB: 5.3,
+    contextK: 128,
+    notes: "Newest small dense coder as of 2026-09; alternative to qwen3.5:9b.",
+  },
+  {
     tag: "qwen3.5:9b",
     family: "qwen3.5",
     params: "9B dense",
@@ -95,6 +111,14 @@ export const catalog: readonly CatalogModel[] = [
     sizeGB: 14,
     contextK: 128,
     notes: "Purpose-built for coding; older but well-tested.",
+  },
+  {
+    tag: "qwen3.8:27b",
+    family: "qwen3.8",
+    params: "27B dense (newest Qwen, 2026-08)",
+    sizeGB: 18,
+    contextK: 256,
+    notes: "Newest Qwen dense model; strongest local coder that fits in 22 GB+.",
   },
   {
     tag: "gemma4:26b",
@@ -160,7 +184,7 @@ export const tiers: readonly Tier[] = [
     maxGB: 6,
     label: "< 6 GB",
     recommended: "qwen3.5:2b",
-    alsoOffer: ["gemma4:e2b"],
+    alsoOffer: ["granite4.2:3b", "gemma4:e2b"],
     reason: "Very tight; short packets only",
   },
   {
@@ -168,7 +192,7 @@ export const tiers: readonly Tier[] = [
     maxGB: 10,
     label: "6–10 GB",
     recommended: "qwen3.5:4b",
-    alsoOffer: ["gemma4:e4b"],
+    alsoOffer: ["granite4.2:8b", "gemma4:e4b"],
     reason: "Light and fast; good for small tasks",
   },
   {
@@ -176,7 +200,7 @@ export const tiers: readonly Tier[] = [
     maxGB: 14,
     label: "10–14 GB",
     recommended: "qwen3.5:9b",
-    alsoOffer: ["gemma4:e4b", "qwen3.5:4b"],
+    alsoOffer: ["granite4.2:8b", "gemma4:e4b", "qwen3.5:4b"],
     reason: "Best code quality that fits",
   },
   {
@@ -191,16 +215,16 @@ export const tiers: readonly Tier[] = [
     minGB: 22,
     maxGB: 30,
     label: "22–30 GB",
-    recommended: "gemma4:26b",
-    alsoOffer: ["qwen3.5:9b", "devstral"],
-    reason: "MoE 26B fits; strong coding",
+    recommended: "qwen3.8:27b",
+    alsoOffer: ["gemma4:26b", "qwen3.5:9b", "devstral"],
+    reason: "Newest 27B dense fits; strong coding",
   },
   {
     minGB: 30,
     maxGB: 48,
     label: "30–48 GB",
     recommended: "qwen3.6:35b-a3b",
-    alsoOffer: ["gemma4:26b", "gemma4:31b"],
+    alsoOffer: ["qwen3.8:27b", "gemma4:26b", "gemma4:31b"],
     reason: "Frontier-adjacent local coding",
   },
   {
