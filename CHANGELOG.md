@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Entries are generated from
 conventional commits by release-please.
 
+## [0.4.1](https://github.com/Raghdkun/local-executor/compare/v0.4.0...v0.4.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **bot:** commit the catalog report so the weekly PR always has a diff ([71c1d22](https://github.com/Raghdkun/local-executor/commit/71c1d225b0ced37439ea271fc7a52cd0124a053f))
+
+
+### Documentation
+
+* stale catalog report to exercise the weekly bot PR path ([157898b](https://github.com/Raghdkun/local-executor/commit/157898b71ea1fcb557d4f25fcfbe4d7cddb7a998))
+
 ## [0.4.0](https://github.com/Raghdkun/local-executor/compare/v0.3.0...v0.4.0) (2026-09-07)
 
 
