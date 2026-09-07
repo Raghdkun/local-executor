@@ -129,7 +129,7 @@ qwen3.5:9b ready: 17.4 tok/s (load 4 s, 64 tokens generated)
 npx local-executor@latest --yes
 ```
 
-It rewrites the files it owns (pipeline docs, runtime scripts, adapters) in every agent it finds, re-measures speed, and keeps your `config.json` edits and your model. Use the explicit `@latest`; plain `npx local-executor` can reuse an older copy from the npx cache. Add `--skip-pull` to leave models alone and `--skip-verify` to skip the end-to-end packet. If you installed globally, `npm i -g local-executor@latest && lex --yes`. `lex doctor` shows what is installed; the first lines of each installed `SKILL.md` name the version that wrote it.
+It rewrites the files it owns (pipeline docs, runtime scripts, adapters) in every agent it finds, re-measures speed, and keeps your `config.json` edits and your model. Use the explicit `@latest`; plain `npx local-executor` can reuse an older copy from the npx cache. Add `--skip-pull` to leave models alone and `--skip-verify` to skip the end-to-end packet. If you installed globally, `npm i -g local-executor@latest && lex --yes` (prefix the `npm i -g` with `sudo` when your global prefix is root-owned, as `/usr/local` is with the macOS Node installer; `npx` needs no such thing). `lex doctor` shows what is installed; the first lines of each installed `SKILL.md` name the version that wrote it.
 
 ## Which model will I get?
 
